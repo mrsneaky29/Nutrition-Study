@@ -1,0 +1,69 @@
+rules_version = '2';
+
+// All study writes flow through callable Functions. This keeps participant and
+// visit numbering transactional, makes retries idempotent, and records audits.
+// There is intentionally no delete permission anywhere in this ruleset.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() && request.auth.token.role == 'admin';
+    }
+
+    function isBoundCollector() {
+      return signedIn() && request.auth.token.role == 'collector' &&
+        request.auth.token.collectorCode is string &&
+        get(/databases/$(database)/documents/collectorCodes/$(request.auth.token.collectorCode)).data.state == 'active' &&
+        get(/databases/$(database)/documents/collectorCodes/$(request.auth.token.collectorCode)).data.boundUid == request.auth.uid;
+    }
+
+    function collectorOwns(data) {
+      return isBoundCollector() &&
+        data.collectorId == request.auth.token.collectorCode;
+    }
+
+    match /collectorCodes/{collectorCode} {
+      allow get, list: if isAdmin();
+      // Functions provision, bind, reset, and revoke codes. No client writes.
+    }
+
+    match /users/{uid} {
+      allow get: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow list: if isAdmin();
+    }
+
+    match /auditEvents/{eventId} {
+      allow get, list: if isAdmin();
+      // Audit events are immutable: no client create, update, or delete.
+    }
+
+    match /studies/{studyId}/participants/{participantId} {
+      allow get, list: if isAdmin() || collectorOwns(resource.data);
+      // Callable createStudyVisit and admin callables are the only writers.
+    }
+
+    match /studies/{studyId}/visits/{visitId} {
+      allow get, list: if isAdmin() || collectorOwns(resource.data);
+      // Callable createStudyVisit and admin callables are the only writers.
+    }
+
+    match /studies/{studyId}/ingestion/{idempotencyId} {
+      // Internal idempotency state: no client access.
+    }
+
+    match /studies/{studyId}/allocations/{allocationId} {
+      // Internal allocation/idempotency state: no client access.
+    }
+
+    match /studies/{studyId}/system/{documentId} {
+      // Internal counters: no client access.
+    }
+
+    match /system/{documentId} {
+      // Internal global counters: no client access.
+    }
+  }
+}

@@ -1,0 +1,17 @@
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.idea/
+*.iml
+*.log
+*.env
+*.env.*
+.local_data/
+build/
+dist/
+**/ephemeral/
+**/.symlinks/
+**/local.properties
+android/key.properties
+android/app/*.jks
+private-release-signing-backup/
