@@ -1,22 +1,46 @@
 param(
   [string]$FlutterCommand = "flutter",
   [string]$LocalApiBaseUrl = "",
-  [string]$LocalApiKey = ""
+  [string]$CollectorApiKey = "",
+  [string]$CollectorId = "",
+  [int]$CollectorNumber = 0
 )
 
 $ErrorActionPreference = "Stop"
 $projectDirectory = Split-Path -Parent $PSScriptRoot
 
-if ([string]::IsNullOrWhiteSpace($LocalApiBaseUrl) -ne [string]::IsNullOrWhiteSpace($LocalApiKey)) {
-  throw "LocalApiBaseUrl and LocalApiKey must be supplied together."
+$hasUrl = -not [string]::IsNullOrWhiteSpace($LocalApiBaseUrl)
+$hasCollectorKey = -not [string]::IsNullOrWhiteSpace($CollectorApiKey)
+if ($hasUrl -ne $hasCollectorKey) {
+  throw "LocalApiBaseUrl and CollectorApiKey must be supplied together."
+}
+if ($hasCollectorKey -and $CollectorApiKey.Length -lt 16) {
+  throw "CollectorApiKey must be at least 16 characters."
 }
 
-$localDefines = @()
-if (-not [string]::IsNullOrWhiteSpace($LocalApiBaseUrl)) {
-  $localDefines = @(
+if ($CollectorNumber -lt 0) {
+  throw "CollectorNumber must be greater than or equal to 0."
+}
+if ([string]::IsNullOrWhiteSpace($CollectorId) -and $CollectorNumber -gt 0) {
+  $CollectorId = "C{0:D3}" -f $CollectorNumber
+}
+if (-not [string]::IsNullOrWhiteSpace($CollectorId)) {
+  $CollectorId = $CollectorId.Trim()
+}
+
+$collectorDefines = @()
+$adminDefines = @()
+if ($hasUrl) {
+  $collectorDefines += @(
     "--dart-define=LOCAL_API_BASE_URL=$LocalApiBaseUrl",
-    "--dart-define=LOCAL_API_KEY=$LocalApiKey"
+    "--dart-define=LOCAL_API_KEY=$CollectorApiKey"
   )
+  $adminDefines += @(
+    "--dart-define=LOCAL_API_BASE_URL=$LocalApiBaseUrl"
+  )
+}
+if (-not [string]::IsNullOrWhiteSpace($CollectorId)) {
+  $collectorDefines += "--dart-define=LOCAL_COLLECTOR_ID=$CollectorId"
 }
 
 function Replace-RequiredText {
@@ -57,12 +81,12 @@ function Update-AdminWebMetadata {
 Push-Location $projectDirectory
 
 try {
-  & $FlutterCommand build web --release --target lib/main.dart --output build/collector_web @localDefines
+  & $FlutterCommand build web --release --target lib/main.dart --output build/collector_web @collectorDefines
   if ($LASTEXITCODE -ne 0) {
     throw "Collector website build failed."
   }
 
-  & $FlutterCommand build web --release --target lib/admin_main.dart --output build/admin_web @localDefines
+  & $FlutterCommand build web --release --target lib/admin_main.dart --output build/admin_web @adminDefines
   if ($LASTEXITCODE -ne 0) {
     throw "Admin website build failed."
   }

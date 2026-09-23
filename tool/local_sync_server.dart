@@ -3,8 +3,8 @@
 /// Run from the project directory:
 ///   dart run tool/local_sync_server.dart --host=0.0.0.0 --port=8787
 ///
-/// Records are deliberately local-only. This is not an authentication service:
-/// put it on a trusted LAN only, and use the Firebase deployment for production.
+/// Records are deliberately local-only. Keep this on a trusted LAN; shared
+/// bearer keys and cleartext HTTP are not suitable for internet exposure.
 library;
 
 import 'dart:async';
@@ -20,10 +20,11 @@ final _random = Random.secure();
 
 Future<void> main(List<String> arguments) async {
   final configuration = _ServerConfiguration.parse(arguments);
-  final accessKey = Platform.environment['LOCAL_SYNC_KEY'] ?? '';
-  if (accessKey.length < 16) {
+  final accessKeys = AccessKeys.fromEnvironment(Platform.environment);
+  if (accessKeys == null) {
     stderr.writeln(
-      'Set LOCAL_SYNC_KEY to a private value containing at least 16 characters.',
+      'Set distinct LOCAL_SYNC_COLLECTOR_KEY(S) and LOCAL_SYNC_ADMIN_KEY '
+      '(at least 16 characters each), or legacy LOCAL_SYNC_KEY for local demo.',
     );
     exitCode = 64;
     return;
@@ -36,9 +37,116 @@ Future<void> main(List<String> arguments) async {
     'Local sync service listening at http://${configuration.host}:${server.port}',
   );
   stdout.writeln('Record store: ${store.recordsFile.path}');
+  stdout.writeln('Conflict store: ${store.conflictsFile.path}');
 
   await for (final request in server) {
-    unawaited(_handleRequest(request, store, accessKey));
+    unawaited(handleRequest(request, store, accessKeys));
+  }
+}
+
+class AccessKeys {
+  const AccessKeys({
+    required this.collectorKeys,
+    required this.admin,
+    this.collectorIdentities = const {},
+  });
+
+  final Set<String> collectorKeys;
+  final String admin;
+  final Map<String, String> collectorIdentities;
+
+  String get collector => collectorKeys.first;
+
+  bool isCollector(String? key) =>
+      key != null && key.isNotEmpty && collectorKeys.contains(key);
+
+  bool isAdmin(String? key) => key != null && key.isNotEmpty && key == admin;
+
+  String? collectorIdForKey(String? key) {
+    if (key == null || !isCollector(key)) return null;
+    if (collectorIdentities.containsKey(key)) {
+      return collectorIdentities[key];
+    }
+    final index = collectorKeys.toList().indexOf(key);
+    if (index >= 0) {
+      return 'C${(index + 1).toString().padLeft(3, '0')}';
+    }
+    return 'C001';
+  }
+
+  static AccessKeys? fromEnvironment(Map<String, String> environment) {
+    final collectorKeys = <String>{};
+    final collectorIdentities = <String, String>{};
+
+    void parseCollectorKeys(String? raw, {String? defaultCollectorId}) {
+      if (raw == null || raw.trim().isEmpty) return;
+      for (final part in raw.split(',')) {
+        final trimmed = part.trim();
+        if (trimmed.isEmpty) continue;
+        String id;
+        String key;
+        if (trimmed.contains(':')) {
+          final colonIdx = trimmed.indexOf(':');
+          final p1 = trimmed.substring(0, colonIdx).trim();
+          final p2 = trimmed.substring(colonIdx + 1).trim();
+          if (p1.length >= 16 && p2.length < 16) {
+            key = p1;
+            id = p2;
+          } else if (p2.length >= 16 && p1.length < 16) {
+            id = p1;
+            key = p2;
+          } else if (RegExp(r'^C\d+$', caseSensitive: false).hasMatch(p1)) {
+            id = p1;
+            key = p2;
+          } else if (RegExp(r'^C\d+$', caseSensitive: false).hasMatch(p2)) {
+            id = p2;
+            key = p1;
+          } else {
+            id = p1;
+            key = p2;
+          }
+        } else {
+          key = trimmed;
+          id =
+              defaultCollectorId ??
+              'C${(collectorKeys.length + 1).toString().padLeft(3, '0')}';
+        }
+        collectorKeys.add(key);
+        collectorIdentities[key] = id;
+      }
+    }
+
+    parseCollectorKeys(environment['LOCAL_SYNC_COLLECTOR_KEYS']);
+    parseCollectorKeys(
+      environment['LOCAL_SYNC_COLLECTOR_KEY'],
+      defaultCollectorId: 'C001',
+    );
+
+    final admin = (environment['LOCAL_SYNC_ADMIN_KEY'] ?? '').trim();
+
+    if (collectorKeys.isNotEmpty || admin.isNotEmpty) {
+      if (admin.length < 16 ||
+          collectorKeys.isEmpty ||
+          collectorKeys.any((key) => key.length < 16) ||
+          collectorKeys.contains(admin)) {
+        return null;
+      }
+      return AccessKeys(
+        collectorKeys: collectorKeys,
+        admin: admin,
+        collectorIdentities: collectorIdentities,
+      );
+    }
+
+    final legacy = (environment['LOCAL_SYNC_KEY'] ?? '').trim();
+    if (legacy.length >= 16) {
+      return AccessKeys(
+        collectorKeys: {legacy},
+        admin: legacy,
+        collectorIdentities: {legacy: 'C001'},
+      );
+    }
+    return null;
   }
 }
 
@@ -79,10 +187,10 @@ class _ServerConfiguration {
   }
 }
 
-Future<void> _handleRequest(
+Future<void> handleRequest(
   HttpRequest request,
   LocalRecordStore store,
-  String accessKey,
+  AccessKeys accessKeys,
 ) async {
   _addCorsHeaders(request.response);
   try {
@@ -92,8 +200,21 @@ Future<void> _handleRequest(
       return;
     }
 
-    if (request.headers.value('x-local-sync-key') != accessKey) {
-      throw ApiException(HttpStatus.unauthorized, 'Invalid local access key.');
+    if (request.method == 'DELETE') {
+      throw const ApiException(
+        HttpStatus.methodNotAllowed,
+        'DELETE is not supported by this service.',
+      );
+    }
+
+    final suppliedKey = request.headers.value('x-local-sync-key');
+    final isCollector = accessKeys.isCollector(suppliedKey);
+    final isAdmin = accessKeys.isAdmin(suppliedKey);
+    if (!isCollector && !isAdmin) {
+      throw const ApiException(
+        HttpStatus.unauthorized,
+        'Invalid local access key.',
+      );
     }
 
     final segments = request.uri.pathSegments;
@@ -101,22 +222,65 @@ Future<void> _handleRequest(
         segments.length == 1 &&
         segments.single == 'health') {
       await _writeJson(request.response, HttpStatus.ok, {
-        'status': 'ok',
+        'status': store.recoveredFromBackup ? 'degraded' : 'ok',
         'records': store.length,
+        'recoveredFromBackup': store.recoveredFromBackup,
       });
+      return;
+    }
+    if (request.method == 'GET' &&
+        segments.length == 2 &&
+        segments.first == 'participants' &&
+        segments[1] == 'lookup') {
+      if (!isCollector) {
+        throw const ApiException(
+          HttpStatus.forbidden,
+          'Collector access required.',
+        );
+      }
+      final phone = request.uri.queryParameters['phone'];
+      if (phone == null || phone.trim().isEmpty) {
+        throw const ApiException(
+          HttpStatus.badRequest,
+          'phone query parameter is required.',
+        );
+      }
+      final result = store.lookupParticipant(phone);
+      await _writeJson(request.response, HttpStatus.ok, result);
       return;
     }
     if (request.method == 'GET' &&
         segments.length == 1 &&
         segments.single == 'records') {
+      _requireAdminAccess(isAdmin);
       await _writeJson(request.response, HttpStatus.ok, store.records());
       return;
     }
     if (request.method == 'POST' &&
         segments.length == 1 &&
         segments.single == 'records') {
+      if (!isCollector) {
+        throw const ApiException(
+          HttpStatus.forbidden,
+          'Collector access required.',
+        );
+      }
+      final payload = await _readJsonObject(request);
+      final authenticatedCollectorId = accessKeys.collectorIdForKey(
+        suppliedKey,
+      );
+      final recordCollectorId = payload['collectorId'];
+      if (authenticatedCollectorId != null &&
+          recordCollectorId != authenticatedCollectorId) {
+        throw const ApiException(
+          HttpStatus.forbidden,
+          'Collector identity in payload does not match authenticated credential.',
+          errorName: 'collector_identity_mismatch',
+        );
+      }
       final record = await store.upsertCollector(
-        await _readJsonObject(request),
+        payload,
+        authenticatedCollectorId: authenticatedCollectorId,
       );
       await _writeJson(request.response, HttpStatus.ok, record);
       return;
@@ -124,6 +288,7 @@ Future<void> _handleRequest(
     if (request.method == 'PUT' &&
         segments.length == 2 &&
         segments.first == 'records') {
+      _requireAdminAccess(isAdmin);
       final record = await store.replaceAdmin(
         segments[1],
         await _readJsonObject(request),
@@ -135,11 +300,12 @@ Future<void> _handleRequest(
         segments.length == 3 &&
         segments.first == 'records' &&
         segments[2] == 'archive') {
+      _requireAdminAccess(isAdmin);
       final payload = await _readJsonObject(request);
       final archived = payload['archived'];
       final actor = payload['actor'];
       if (archived is! bool || actor is! String || actor.trim().isEmpty) {
-        throw ApiException(
+        throw const ApiException(
           HttpStatus.badRequest,
           'archived must be bool and actor must be non-empty text.',
         );
@@ -152,17 +318,45 @@ Future<void> _handleRequest(
       await _writeJson(request.response, HttpStatus.ok, record);
       return;
     }
-    if (request.method == 'DELETE') {
-      throw ApiException(
-        HttpStatus.methodNotAllowed,
-        'DELETE is not supported by this service.',
-      );
+    if (segments.isNotEmpty && segments.first == 'conflicts') {
+      _requireAdminAccess(isAdmin);
+      if (request.method == 'GET' && segments.length == 1) {
+        await _writeJson(request.response, HttpStatus.ok, store.conflicts());
+        return;
+      }
+      if (request.method == 'GET' && segments.length == 2) {
+        final conflict = store.getConflict(segments[1]);
+        if (conflict == null) {
+          throw const ApiException(
+            HttpStatus.notFound,
+            'Conflict report not found.',
+          );
+        }
+        await _writeJson(request.response, HttpStatus.ok, conflict);
+        return;
+      }
+      if (request.method == 'POST' &&
+          segments.length == 3 &&
+          segments[2] == 'review') {
+        final payload = await _readJsonObject(request);
+        final notes = payload['notes'] as String?;
+        final updated = await store.reviewConflict(segments[1], notes: notes);
+        await _writeJson(request.response, HttpStatus.ok, updated);
+        return;
+      }
+      if (request.method == 'POST' &&
+          segments.length == 3 &&
+          segments[2] == 'resolve') {
+        final payload = await _readJsonObject(request);
+        final updated = await store.resolveConflict(segments[1], payload);
+        await _writeJson(request.response, HttpStatus.ok, updated);
+        return;
+      }
+      throw const ApiException(HttpStatus.notFound, 'Route not found.');
     }
-    throw ApiException(HttpStatus.notFound, 'Route not found.');
+    throw const ApiException(HttpStatus.notFound, 'Route not found.');
   } on ApiException catch (error) {
-    await _writeJson(request.response, error.statusCode, {
-      'error': error.message,
-    });
+    await _writeJson(request.response, error.statusCode, error.toJson());
   } on FormatException catch (error) {
     await _writeJson(request.response, HttpStatus.badRequest, {
       'error': error.message,
@@ -172,6 +366,12 @@ Future<void> _handleRequest(
     await _writeJson(request.response, HttpStatus.internalServerError, {
       'error': 'Internal server error.',
     });
+  }
+}
+
+void _requireAdminAccess(bool isAdmin) {
+  if (!isAdmin) {
+    throw ApiException(HttpStatus.forbidden, 'Administrator access required.');
   }
 }
 
@@ -229,10 +429,47 @@ Future<void> _writeJson(
 }
 
 class ApiException implements Exception {
-  const ApiException(this.statusCode, this.message);
+  const ApiException(
+    this.statusCode,
+    this.message, {
+    this.conflictType,
+    this.conflictId,
+    this.errorName,
+  });
 
   final int statusCode;
   final String message;
+  final String? conflictType;
+  final String? conflictId;
+  final String? errorName;
+
+  Map<String, dynamic> toJson() {
+    if (errorName != null) {
+      final json = <String, dynamic>{'error': errorName, 'message': message};
+      if (conflictId != null) json['conflictId'] = conflictId;
+      if (conflictType != null) json['conflictType'] = conflictType;
+      return json;
+    }
+    if (statusCode == HttpStatus.conflict) {
+      final json = <String, dynamic>{
+        'error': 'conflict',
+        'message': message,
+        'conflictType': conflictType ?? 'conflict',
+      };
+      if (conflictId != null) {
+        json['conflictId'] = conflictId;
+      }
+      return json;
+    }
+    return {'error': message};
+  }
+
+  @override
+  String toString() =>
+      'ApiException($statusCode, $message'
+      '${conflictType != null ? ', conflictType: $conflictType' : ''}'
+      '${conflictId != null ? ', conflictId: $conflictId' : ''}'
+      '${errorName != null ? ', errorName: $errorName' : ''})';
 }
 
 /// Dependency-free persistence and validation for the canonical VisitRecord JSON
@@ -246,38 +483,118 @@ class LocalRecordStore {
       ),
       _backupFile = File(
         '${dataDirectory.path}${Platform.pathSeparator}records.json.bak',
+      ),
+      conflictsFile = File(
+        '${dataDirectory.path}${Platform.pathSeparator}conflicts.json',
+      ),
+      _backupConflictsFile = File(
+        '${dataDirectory.path}${Platform.pathSeparator}conflicts.json.bak',
       );
 
   final Directory _dataDirectory;
   final File recordsFile;
   final File _backupFile;
+  final File conflictsFile;
+  final File _backupConflictsFile;
   final Map<String, Map<String, dynamic>> _records = {};
+  final Map<String, Map<String, dynamic>> _conflicts = {};
   Future<void> _writeTail = Future<void>.value();
+  bool _primaryWasCorrupt = false;
+  bool _primaryConflictsWasCorrupt = false;
+  bool _recordsRecoveredFromBackup = false;
+  bool _conflictsRecoveredFromBackup = false;
 
   int get length => _records.length;
+  int get conflictsCount => _conflicts.length;
+  bool get recoveredFromBackup =>
+      _recordsRecoveredFromBackup || _conflictsRecoveredFromBackup;
 
   Future<void> load() async {
     await _dataDirectory.create(recursive: true);
-    final source = await recordsFile.exists()
-        ? recordsFile
-        : (await _backupFile.exists() ? _backupFile : null);
-    if (source == null) {
-      return;
-    }
-    final decoded = jsonDecode(await source.readAsString());
-    if (decoded is! List) {
-      throw FormatException('Stored records must be a JSON list.');
-    }
-    for (final value in decoded) {
-      if (value is! Map) {
-        throw FormatException('Stored record must be a JSON object.');
+    await _loadRecords();
+    await _loadConflicts();
+  }
+
+  Future<void> _loadRecords() async {
+    if (await recordsFile.exists()) {
+      try {
+        _records.addAll(await _readStoredRecords(recordsFile));
+        return;
+      } catch (error) {
+        if (!await _backupFile.exists()) rethrow;
+        _primaryWasCorrupt = true;
+        _recordsRecoveredFromBackup = true;
+        stderr.writeln(
+          'Primary record file is invalid; loading previous snapshot.',
+        );
       }
-      final record = _normalizeRecord(Map<String, dynamic>.from(value));
-      _records[record['id'] as String] = record;
     }
-    if (source.path == _backupFile.path && !await recordsFile.exists()) {
+    if (!await _backupFile.exists()) return;
+    _recordsRecoveredFromBackup = true;
+    _records.addAll(await _readStoredRecords(_backupFile));
+    if (!_primaryWasCorrupt) {
+      // A write may have been interrupted after moving the old primary aside.
       await _persist();
     }
+  }
+
+  Future<void> _loadConflicts() async {
+    if (await conflictsFile.exists()) {
+      try {
+        _conflicts.addAll(await _readStoredConflicts(conflictsFile));
+        return;
+      } catch (error) {
+        if (!await _backupConflictsFile.exists()) rethrow;
+        _primaryConflictsWasCorrupt = true;
+        _conflictsRecoveredFromBackup = true;
+        stderr.writeln(
+          'Primary conflicts file is invalid; loading previous snapshot.',
+        );
+      }
+    }
+    if (!await _backupConflictsFile.exists()) return;
+    _conflictsRecoveredFromBackup = true;
+    _conflicts.addAll(await _readStoredConflicts(_backupConflictsFile));
+    if (!_primaryConflictsWasCorrupt) {
+      await _persistConflicts();
+    }
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _readStoredRecords(
+    File source,
+  ) async {
+    final decoded = jsonDecode(await source.readAsString());
+    if (decoded is! List) {
+      throw const FormatException('Stored records must be a JSON list.');
+    }
+    final loaded = <String, Map<String, dynamic>>{};
+    for (final value in decoded) {
+      if (value is! Map) {
+        throw const FormatException('Stored record must be a JSON object.');
+      }
+      final record = _normalizeRecord(Map<String, dynamic>.from(value));
+      loaded[record['id'] as String] = record;
+    }
+    return loaded;
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _readStoredConflicts(
+    File source,
+  ) async {
+    final decoded = jsonDecode(await source.readAsString());
+    if (decoded is! List) {
+      throw const FormatException('Stored conflicts must be a JSON list.');
+    }
+    final loaded = <String, Map<String, dynamic>>{};
+    for (final value in decoded) {
+      if (value is! Map) {
+        throw const FormatException('Stored conflict must be a JSON object.');
+      }
+      final conflict = Map<String, dynamic>.from(value);
+      final id = conflict['id'] as String;
+      loaded[id] = conflict;
+    }
+    return loaded;
   }
 
   List<Map<String, dynamic>> records() {
@@ -290,38 +607,440 @@ class LocalRecordStore {
     return values;
   }
 
-  Future<Map<String, dynamic>> upsertCollector(Map<String, dynamic> incoming) {
+  List<Map<String, dynamic>> conflicts() {
+    final values = _conflicts.values.map(_clone).toList()
+      ..sort(
+        (left, right) => (right['createdAt'] as String).compareTo(
+          left['createdAt'] as String,
+        ),
+      );
+    return values;
+  }
+
+  Map<String, dynamic>? getConflict(String id) {
+    final conflict = _conflicts[id];
+    return conflict == null ? null : _clone(conflict);
+  }
+
+  Future<Map<String, dynamic>> reviewConflict(String id, {String? notes}) {
     return _serialize(() async {
+      final conflict = _conflicts[id];
+      if (conflict == null) {
+        throw const ApiException(
+          HttpStatus.notFound,
+          'Conflict report not found.',
+        );
+      }
+      if (conflict['status'] == 'resolved') {
+        throw const ApiException(
+          HttpStatus.conflict,
+          'Resolved conflicts cannot be marked reviewed again.',
+        );
+      }
+      conflict['status'] = 'reviewed';
+      if (notes != null) {
+        conflict['notes'] = notes;
+      }
+      conflict['reviewedAt'] = _now();
+      await _persistConflicts();
+      return _clone(conflict);
+    });
+  }
+
+  Future<Map<String, dynamic>> resolveConflict(
+    String id,
+    Map<String, dynamic> resolution,
+  ) {
+    return _serialize(() async {
+      final conflict = _conflicts[id];
+      if (conflict == null) {
+        throw const ApiException(
+          HttpStatus.notFound,
+          'Conflict report not found.',
+        );
+      }
+      if (conflict['status'] == 'resolved') return _clone(conflict);
+      final rejected = Map<String, dynamic>.from(
+        conflict['rejectedRecord'] as Map,
+      );
+      final record = _clone(rejected);
+
+      // A rejected upload may have reused the ID of a valid stored visit.
+      // Never let conflict resolution replace that visit. The administrator
+      // must give the rejected upload a fresh record ID before accepting it.
+      if (resolution['recordId'] != null) {
+        record['id'] = resolution['recordId'];
+      }
+      final recordId = record['id'] as String;
+      if (_records.containsKey(recordId)) {
+        throw const ApiException(
+          HttpStatus.conflict,
+          'Record ID already belongs to an accepted visit. Choose a new record ID.',
+          conflictType: 'record_id_collision',
+        );
+      }
+      final uploadKey = record['idempotencyKey'];
+      if (uploadKey != null &&
+          _records.values.any(
+            (stored) => stored['idempotencyKey'] == uploadKey,
+          )) {
+        // Keep the original rejected key in the conflict report so retries
+        // can be mapped to this accepted record, while giving the stored visit
+        // its own unique upload key.
+        record['idempotencyKey'] = 'resolved-$id';
+      }
+
+      if (resolution['studyId'] != null) {
+        final participant = Map<String, dynamic>.from(
+          record['participant'] as Map,
+        );
+        participant['studyId'] = resolution['studyId'];
+        record['participant'] = participant;
+      }
+      if (resolution['visitNumber'] != null) {
+        record['visitNumber'] = resolution['visitNumber'];
+        if (record['confirmation'] != null) {
+          final conf = Map<String, dynamic>.from(record['confirmation'] as Map);
+          conf['visitNumber'] = resolution['visitNumber'];
+          record['confirmation'] = conf;
+        }
+      }
+      if (resolution['name'] != null) {
+        final participant = Map<String, dynamic>.from(
+          record['participant'] as Map,
+        );
+        participant['name'] = resolution['name'];
+        record['participant'] = participant;
+        if (record['confirmation'] != null) {
+          final conf = Map<String, dynamic>.from(record['confirmation'] as Map);
+          conf['name'] = resolution['name'];
+          record['confirmation'] = conf;
+        }
+      }
+      if (resolution['indianPhone'] != null) {
+        final participant = Map<String, dynamic>.from(
+          record['participant'] as Map,
+        );
+        participant['indianPhone'] = resolution['indianPhone'];
+        record['participant'] = participant;
+        if (record['confirmation'] != null) {
+          final conf = Map<String, dynamic>.from(record['confirmation'] as Map);
+          conf['indianPhone'] = resolution['indianPhone'];
+          record['confirmation'] = conf;
+        }
+      }
+
+      record
+        ..['createdAt'] = record['createdAt'] ?? _now()
+        ..['updatedAt'] = _now()
+        ..['revision'] = record['revision'] ?? 1
+        ..['syncState'] = 'synced';
+
+      _validateRecord(record);
+      _requireUniqueUpload(record);
+
+      await _saveRecord(recordId, record);
+
+      conflict['status'] = 'resolved';
+      conflict['acceptedRecordId'] = recordId;
+      conflict['resolution'] = _clone(resolution);
+      conflict['resolvedAt'] = _now();
+      await _persistConflicts();
+
+      return _clone(conflict);
+    });
+  }
+
+  Map<String, dynamic> lookupParticipant(String phone) {
+    final matchingRecords = _records.values.where((record) {
+      if (_isArchived(record)) return false;
+      final p = _participant(record);
+      final storedPhone = (p['indianPhone'] as String?) ?? '';
+      return _phoneMatches(storedPhone, phone);
+    }).toList();
+
+    if (matchingRecords.isEmpty) {
+      return {'found': false};
+    }
+
+    final byStudyId = <String, Map<String, dynamic>>{};
+    for (final r in matchingRecords) {
+      final p = _participant(r);
+      final studyId = p['studyId'] as String;
+      final entry = byStudyId.putIfAbsent(
+        studyId,
+        () => {'studyId': studyId, 'name': p['name'], 'nextVisitNumber': 1},
+      );
+      final visit = r['visitNumber'];
+      if (visit is int && visit >= (entry['nextVisitNumber'] as int)) {
+        entry['nextVisitNumber'] = visit + 1;
+      }
+    }
+
+    final participants = byStudyId.values.toList()
+      ..sort(
+        (a, b) => (a['studyId'] as String).compareTo(b['studyId'] as String),
+      );
+    if (participants.length > 1) {
+      return {'found': true, 'ambiguous': true, 'participants': participants};
+    }
+
+    return {'found': true, 'participant': participants.single};
+  }
+
+  Future<Map<String, dynamic>> _recordConflict({
+    required String conflictType,
+    required String message,
+    required Map<String, dynamic> incoming,
+    required Map<String, dynamic> conflictingRecord,
+  }) async {
+    final incomingKey = incoming['idempotencyKey'] as String?;
+    if (incomingKey != null) {
+      for (final existingReport in _conflicts.values) {
+        if (existingReport['idempotencyKey'] == incomingKey) {
+          return existingReport;
+        }
+      }
+    } else {
+      final incomingId = incoming['id'] as String?;
+      if (incomingId != null) {
+        for (final existingReport in _conflicts.values) {
+          if (existingReport['rejectedRecord']?['id'] == incomingId) {
+            return existingReport;
+          }
+        }
+      }
+    }
+
+    final timestamp = DateTime.now().toUtc().millisecondsSinceEpoch;
+    final hash = _random.nextInt(0xFFFFFF).toRadixString(16).padLeft(6, '0');
+    final conflictId = 'conflict-$timestamp-$hash';
+
+    final report = <String, dynamic>{
+      'id': conflictId,
+      'conflictType': conflictType,
+      'message': message,
+      'createdAt': _now(),
+      'collectorId': incoming['collectorId'],
+      'idempotencyKey': incomingKey,
+      'rejectedRecord': _clone(incoming),
+      'conflictingRecordId': conflictingRecord['id'],
+      'conflictingRecord': _clone(conflictingRecord),
+      'status': 'pending',
+      'resolution': null,
+    };
+
+    _conflicts[conflictId] = report;
+    await _persistConflicts();
+    return report;
+  }
+
+  Future<void> _checkCollectorConflicts(Map<String, dynamic> incoming) async {
+    final participant = _participant(incoming);
+    for (final existing in _records.values) {
+      if (existing['id'] == incoming['id']) continue;
+      final other = _participant(existing);
+      if (incoming['idempotencyKey'] != null &&
+          incoming['idempotencyKey'] == existing['idempotencyKey']) {
+        final report = await _recordConflict(
+          conflictType: 'idempotency_collision',
+          message: 'Upload key is already used.',
+          incoming: incoming,
+          conflictingRecord: existing,
+        );
+        throw ApiException(
+          HttpStatus.conflict,
+          'Upload key is already used.',
+          conflictType: 'idempotency_collision',
+          conflictId: report['id'] as String,
+        );
+      }
+      if (participant['studyId'] == other['studyId'] &&
+          participant['indianPhone'] != other['indianPhone']) {
+        final report = await _recordConflict(
+          conflictType: 'participant_mismatch',
+          message: 'Participant number belongs to another phone. Resolve this conflict before syncing.',
+          incoming: incoming,
+          conflictingRecord: existing,
+        );
+        throw ApiException(
+          HttpStatus.conflict,
+          'Participant number belongs to another phone. Resolve this conflict before syncing.',
+          conflictType: 'participant_mismatch',
+          conflictId: report['id'] as String,
+        );
+      }
+      if (participant['studyId'] == other['studyId'] &&
+          participant['name'] != other['name']) {
+        final report = await _recordConflict(
+          conflictType: 'participant_mismatch',
+          message: 'Participant number belongs to another name. Resolve this conflict before syncing.',
+          incoming: incoming,
+          conflictingRecord: existing,
+        );
+        throw ApiException(
+          HttpStatus.conflict,
+          'Participant number belongs to another name. Resolve this conflict before syncing.',
+          conflictType: 'participant_mismatch',
+          conflictId: report['id'] as String,
+        );
+      }
+      if (participant['studyId'] == other['studyId'] &&
+          incoming['visitNumber'] == existing['visitNumber']) {
+        final report = await _recordConflict(
+          conflictType: 'duplicate_visit',
+          message: 'Visit number is already recorded for this participant.',
+          incoming: incoming,
+          conflictingRecord: existing,
+        );
+        throw ApiException(
+          HttpStatus.conflict,
+          'Visit number is already recorded for this participant.',
+          conflictType: 'duplicate_visit',
+          conflictId: report['id'] as String,
+        );
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> upsertCollector(
+    Map<String, dynamic> incoming, {
+    String? authenticatedCollectorId,
+  }) {
+    return _serialize(() async {
+      // Check if this record was previously conflicted and has now been resolved
+      final incomingKey = incoming['idempotencyKey'] as String?;
+      final incomingId = incoming['id'] as String?;
+      for (final conflict in _conflicts.values) {
+        if (conflict['status'] == 'resolved') {
+          final matchesKey =
+              incomingKey != null && conflict['idempotencyKey'] == incomingKey;
+          final matchesId =
+              incomingId != null &&
+              conflict['rejectedRecord']?['id'] == incomingId;
+          if (matchesKey || matchesId) {
+            final acceptedId = conflict['acceptedRecordId'];
+            final accepted = acceptedId is String ? _records[acceptedId] : null;
+            if (accepted != null) {
+              return _clone(accepted);
+            }
+          }
+        }
+      }
+
       final record = _normalizeRecord(incoming, allowMissingAuditFields: true);
       final id = record['id'] as String;
       final existing = _records[id];
       if (existing != null) {
-        _requireCollectorMayUpdate(existing, record);
-        record
-          ..['createdAt'] = existing['createdAt']
-          ..['updatedAt'] = _now()
-          ..['revision'] = (existing['revision'] as int) + 1
-          ..['syncState'] = 'synced'
-          ..['archivedAt'] = null
-          ..['archivedBy'] = null;
-      } else {
-        if (_isArchived(record)) {
+        final previousKey = existing['idempotencyKey'];
+        if (previousKey != incomingKey &&
+            !(previousKey == null &&
+                incomingKey != null &&
+                existing['submittedAt'] == record['submittedAt'])) {
+          final report = await _recordConflict(
+            conflictType: 'idempotency_collision',
+            message: 'Record ID was already used for a different upload.',
+            incoming: record,
+            conflictingRecord: existing,
+          );
           throw ApiException(
-            HttpStatus.badRequest,
-            'Collectors cannot create archived records.',
+            HttpStatus.conflict,
+            'Record ID was already used for a different upload.',
+            conflictType: 'idempotency_collision',
+            conflictId: report['id'] as String,
           );
         }
-        record
-          ..['createdAt'] = _now()
-          ..['updatedAt'] = _now()
-          ..['revision'] = 1
-          ..['syncState'] = 'synced';
+        _requireCollectorMayUpdate(existing, record);
+        // An upload retry must not increment the revision or restore stale
+        // collector data over a later administrator correction.
+        return _clone(existing);
       }
+      if (_isArchived(record)) {
+        throw const ApiException(
+          HttpStatus.badRequest,
+          'Collectors cannot create archived records.',
+        );
+      }
+
+      // Check collector-scoped prefix on new participant
+      if (authenticatedCollectorId != null) {
+        final studyId = _participant(record)['studyId'] as String;
+        final isNewParticipant = !_records.values.any(
+          (r) => _participant(r)['studyId'] == studyId,
+        );
+        if (isNewParticipant) {
+          final studyMatch = RegExp(r'^C(\d{2,3})-').firstMatch(studyId);
+          if (studyMatch != null) {
+            final studyCollectorNum = int.tryParse(studyMatch.group(1)!);
+            final authCollectorNum = _extractCollectorNumber(
+              authenticatedCollectorId,
+            );
+            if (studyCollectorNum != null &&
+                authCollectorNum != null &&
+                studyCollectorNum != authCollectorNum) {
+              throw const ApiException(
+                HttpStatus.badRequest,
+                'Participant Study ID prefix does not match authenticated collector.',
+              );
+            }
+          }
+        }
+      }
+
+      await _checkCollectorConflicts(record);
+
+      record
+        ..['createdAt'] = _now()
+        ..['updatedAt'] = _now()
+        ..['revision'] = 1
+        ..['syncState'] = 'synced';
       _validateRecord(record);
-      _records[id] = record;
-      await _persist();
+      await _saveRecord(id, record);
       return _clone(record);
     });
+  }
+
+  void _requireUniqueUpload(
+    Map<String, dynamic> incoming, {
+    String? excludeId,
+  }) {
+    final participant = _participant(incoming);
+    for (final existing in _records.values) {
+      if (existing['id'] == excludeId) continue;
+      final other = _participant(existing);
+      if (incoming['idempotencyKey'] != null &&
+          incoming['idempotencyKey'] == existing['idempotencyKey']) {
+        throw const ApiException(
+          HttpStatus.conflict,
+          'Upload key is already used.',
+          conflictType: 'idempotency_collision',
+        );
+      }
+      if (participant['studyId'] == other['studyId'] &&
+          participant['indianPhone'] != other['indianPhone']) {
+        throw const ApiException(
+          HttpStatus.conflict,
+          'Participant number belongs to another phone. Resolve this conflict before syncing.',
+          conflictType: 'participant_mismatch',
+        );
+      }
+      if (participant['studyId'] == other['studyId'] &&
+          participant['name'] != other['name']) {
+        throw const ApiException(
+          HttpStatus.conflict,
+          'Participant number belongs to another name. Resolve this conflict before syncing.',
+          conflictType: 'participant_mismatch',
+        );
+      }
+      if (participant['studyId'] == other['studyId'] &&
+          incoming['visitNumber'] == existing['visitNumber']) {
+        throw const ApiException(
+          HttpStatus.conflict,
+          'Visit number is already recorded for this participant.',
+          conflictType: 'duplicate_visit',
+        );
+      }
+    }
   }
 
   Future<Map<String, dynamic>> replaceAdmin(
@@ -331,24 +1050,34 @@ class LocalRecordStore {
     return _serialize(() async {
       final existing = _records[id];
       if (existing == null) {
-        throw ApiException(HttpStatus.notFound, 'Record not found.');
+        throw const ApiException(HttpStatus.notFound, 'Record not found.');
       }
       final record = _normalizeRecord(incoming, allowMissingAuditFields: true);
       if (record['id'] != id) {
-        throw ApiException(
+        throw const ApiException(
           HttpStatus.badRequest,
           'Body id must match the record URL.',
         );
       }
+      // Preserve existing questionnaire if incoming is omitted or null
+      if (incoming['questionnaire'] == null &&
+          existing['questionnaire'] != null) {
+        record['questionnaire'] = existing['questionnaire'] is Map
+            ? _clone(
+                Map<String, dynamic>.from(existing['questionnaire'] as Map),
+              )
+            : existing['questionnaire'];
+      }
       _requireAdminImmutableFields(existing, record);
+      _requireUniqueUpload(record, excludeId: id);
       record
         ..['createdAt'] = existing['createdAt']
         ..['updatedAt'] = _now()
         ..['revision'] = (existing['revision'] as int) + 1;
+      record['idempotencyKey'] = existing['idempotencyKey'];
       _copyArchiveMarker(existing, record);
       _validateRecord(record);
-      _records[id] = record;
-      await _persist();
+      await _saveRecord(id, record);
       return _clone(record);
     });
   }
@@ -377,10 +1106,24 @@ class LocalRecordStore {
         ..['updatedAt'] = _now()
         ..['revision'] = (existing['revision'] as int) + 1;
       _validateRecord(record);
-      _records[id] = record;
-      await _persist();
+      await _saveRecord(id, record);
       return _clone(record);
     });
+  }
+
+  Future<void> _saveRecord(String id, Map<String, dynamic> record) async {
+    final previous = _records[id];
+    _records[id] = record;
+    try {
+      await _persist();
+    } catch (_) {
+      if (previous == null) {
+        _records.remove(id);
+      } else {
+        _records[id] = previous;
+      }
+      rethrow;
+    }
   }
 
   Future<T> _serialize<T>(Future<T> Function() operation) {
@@ -396,30 +1139,79 @@ class LocalRecordStore {
     );
     await temporary.writeAsString(jsonEncode(records()), flush: true);
     try {
-      await temporary.rename(recordsFile.path);
-      if (await _backupFile.exists()) {
-        await _backupFile.delete();
-      }
-    } on FileSystemException {
-      // Windows cannot always replace an existing file with rename. Keep a
-      // recoverable backup until the replacement has completed successfully.
-      if (await _backupFile.exists()) {
-        await _backupFile.delete();
-      }
-      if (await recordsFile.exists()) {
-        await recordsFile.rename(_backupFile.path);
+      if (await recordsFile.exists() && !_primaryWasCorrupt) {
+        // Retain the last successfully committed state, not just a transient
+        // rename fallback. Never replace a valid backup with a corrupt primary.
+        await recordsFile.copy(_backupFile.path);
       }
       try {
         await temporary.rename(recordsFile.path);
-        if (await _backupFile.exists()) {
-          await _backupFile.delete();
+      } on FileSystemException {
+        // Windows cannot replace an existing file with rename. Move the old
+        // primary aside before installing the flushed temporary file.
+        if (await recordsFile.exists()) {
+          if (_primaryWasCorrupt) {
+            await recordsFile.rename(
+              '${recordsFile.path}.corrupt-$pid-${_random.nextInt(1 << 32)}',
+            );
+          } else {
+            if (await _backupFile.exists()) await _backupFile.delete();
+            await recordsFile.rename(_backupFile.path);
+          }
         }
-      } catch (_) {
-        if (!await recordsFile.exists() && await _backupFile.exists()) {
-          await _backupFile.rename(recordsFile.path);
-        }
-        rethrow;
+        await temporary.rename(recordsFile.path);
       }
+      _primaryWasCorrupt = false;
+    } catch (_) {
+      if (_primaryWasCorrupt || !await recordsFile.exists()) {
+        if (!await recordsFile.exists() && await _backupFile.exists()) {
+          await _backupFile.copy(recordsFile.path);
+        }
+      }
+      rethrow;
+    } finally {
+      if (await temporary.exists()) await temporary.delete();
+    }
+  }
+
+  Future<void> _persistConflicts() async {
+    await _dataDirectory.create(recursive: true);
+    final temporary = File(
+      '${conflictsFile.path}.tmp-$pid-${_random.nextInt(1 << 32)}',
+    );
+    await temporary.writeAsString(jsonEncode(conflicts()), flush: true);
+    try {
+      if (await conflictsFile.exists() && !_primaryConflictsWasCorrupt) {
+        await conflictsFile.copy(_backupConflictsFile.path);
+      }
+      try {
+        await temporary.rename(conflictsFile.path);
+      } on FileSystemException {
+        if (await conflictsFile.exists()) {
+          if (_primaryConflictsWasCorrupt) {
+            await conflictsFile.rename(
+              '${conflictsFile.path}.corrupt-$pid-${_random.nextInt(1 << 32)}',
+            );
+          } else {
+            if (await _backupConflictsFile.exists()) {
+              await _backupConflictsFile.delete();
+            }
+            await conflictsFile.rename(_backupConflictsFile.path);
+          }
+        }
+        await temporary.rename(conflictsFile.path);
+      }
+      _primaryConflictsWasCorrupt = false;
+    } catch (_) {
+      if (_primaryConflictsWasCorrupt || !await conflictsFile.exists()) {
+        if (!await conflictsFile.exists() &&
+            await _backupConflictsFile.exists()) {
+          await _backupConflictsFile.copy(conflictsFile.path);
+        }
+      }
+      rethrow;
+    } finally {
+      if (await temporary.exists()) await temporary.delete();
     }
   }
 }
@@ -435,6 +1227,7 @@ const _recordFields = {
   'syncState',
   'reviewState',
   'revision',
+  'idempotencyKey',
   'confirmation',
   'stepTwoMeasurement',
   'stepTwoPlaceholderNote',
@@ -463,6 +1256,7 @@ Map<String, dynamic> _normalizeRecord(
     'submittedAt',
     'archivedAt',
     'archivedBy',
+    'idempotencyKey',
   ]) {
     record.putIfAbsent(field, () => null);
   }
@@ -500,6 +1294,9 @@ void _validateRecord(Map<String, dynamic> record) {
   }
   _requireText(record['id'], 'id', allowSlash: false);
   _requireText(record['collectorId'], 'collectorId');
+  if (record['idempotencyKey'] != null) {
+    _requireText(record['idempotencyKey'], 'idempotencyKey');
+  }
   if (record['visitNumber'] is! int || (record['visitNumber'] as int) < 1) {
     throw ApiException(
       HttpStatus.badRequest,
@@ -541,6 +1338,24 @@ void _validateRecord(Map<String, dynamic> record) {
   }
   for (final field in ['studyId', 'name', 'indianPhone']) {
     _requireText(participantMap[field], 'participant.$field');
+  }
+  final studyId = participantMap['studyId'] as String;
+  final collectorIdMatch = RegExp(r'^C(\d{2,3})-(\d{6,})$').firstMatch(studyId);
+  final legacyIdMatch = RegExp(r'^P(\d{3,})$').firstMatch(studyId);
+  final validCollectorId =
+      collectorIdMatch != null &&
+      (int.tryParse(collectorIdMatch.group(1)!) ?? 0) > 0 &&
+      (int.tryParse(collectorIdMatch.group(1)!) ?? 0) <= 99 &&
+      (BigInt.tryParse(collectorIdMatch.group(2)!) ?? BigInt.zero) >
+          BigInt.zero;
+  final validLegacyId =
+      legacyIdMatch != null &&
+      (BigInt.tryParse(legacyIdMatch.group(1)!) ?? BigInt.zero) > BigInt.zero;
+  if (!validCollectorId && !validLegacyId) {
+    throw const ApiException(
+      HttpStatus.badRequest,
+      'participant.studyId must be a positive C01-000001-style or legacy P001-style number.',
+    );
   }
   record['participant'] = participantMap;
 
@@ -585,50 +1400,99 @@ void _validateRecord(Map<String, dynamic> record) {
 void _validateQuestionnaire(Object? value) {
   if (value == null) return; // Legacy submissions remain valid.
   if (value is! Map) {
-    throw ApiException(HttpStatus.badRequest, 'questionnaire must be an object.');
+    throw ApiException(
+      HttpStatus.badRequest,
+      'questionnaire must be an object.',
+    );
   }
   final questionnaire = Map<String, dynamic>.from(value);
   const requiredText = {
-    'studySite', 'sex', 'education', 'employment', 'fruitFrequency',
-    'vegetableFrequency', 'sugaryDrinkFrequency', 'processedFoodFrequency',
+    'studySite',
+    'sex',
+    'education',
+    'employment',
+    'fruitFrequency',
+    'vegetableFrequency',
+    'sugaryDrinkFrequency',
+    'processedFoodFrequency',
   };
   const requiredNumbers = {
-    'age', 'activeDaysPerWeek', 'activeMinutesPerDay', 'sleepHours',
-    'heightCm', 'weightKg', 'waistCm', 'bpOneSystolic', 'bpOneDiastolic',
-    'bpTwoSystolic', 'bpTwoDiastolic', 'weeklyActiveMinutes', 'bmi',
-    'averageSystolic', 'averageDiastolic',
+    'age',
+    'activeDaysPerWeek',
+    'activeMinutesPerDay',
+    'sleepHours',
+    'heightCm',
+    'weightKg',
+    'waistCm',
+    'bpOneSystolic',
+    'bpOneDiastolic',
+    'bpTwoSystolic',
+    'bpTwoDiastolic',
+    'weeklyActiveMinutes',
+    'bmi',
+    'averageSystolic',
+    'averageDiastolic',
   };
-  final allowed = {...requiredText, ...requiredNumbers, 'tobaccoUse',
-    'tobaccoType', 'tobaccoFrequency', 'alcoholPast30Days',
-    'alcoholFrequency', 'hypertensionDiagnosis', 'diabetesDiagnosis',
-    'highCholesterolDiagnosis', 'cardiovascularDiagnosis'};
+  final allowed = {
+    ...requiredText,
+    ...requiredNumbers,
+    'tobaccoUse',
+    'tobaccoType',
+    'tobaccoFrequency',
+    'alcoholPast30Days',
+    'alcoholFrequency',
+    'hypertensionDiagnosis',
+    'diabetesDiagnosis',
+    'highCholesterolDiagnosis',
+    'cardiovascularDiagnosis',
+  };
   if (questionnaire.keys.any((key) => !allowed.contains(key)) ||
-      !questionnaire.keys.toSet().containsAll({...requiredText, ...requiredNumbers})) {
-    throw ApiException(HttpStatus.badRequest, 'questionnaire has an invalid shape.');
+      !questionnaire.keys.toSet().containsAll({
+        ...requiredText,
+        ...requiredNumbers,
+      })) {
+    throw ApiException(
+      HttpStatus.badRequest,
+      'questionnaire has an invalid shape.',
+    );
   }
-  for (final field in requiredText) { _requireText(questionnaire[field], 'questionnaire.$field'); }
+  for (final field in requiredText) {
+    _requireText(questionnaire[field], 'questionnaire.$field');
+  }
   for (final field in requiredNumbers) {
     if (questionnaire[field] is! num) {
-      throw ApiException(HttpStatus.badRequest, 'questionnaire.$field must be numeric.');
+      throw ApiException(
+        HttpStatus.badRequest,
+        'questionnaire.$field must be numeric.',
+      );
     }
   }
   final age = questionnaire['age'] as num;
   final days = questionnaire['activeDaysPerWeek'] as num;
-  if (age < 18 || age > 120 || days < 0 || days > 7 ||
+  if (age < 18 ||
+      age > 120 ||
+      days < 0 ||
+      days > 7 ||
       (questionnaire['heightCm'] as num) <= 0 ||
       (questionnaire['weightKg'] as num) <= 0 ||
       (questionnaire['waistCm'] as num) <= 0) {
-    throw ApiException(HttpStatus.badRequest, 'questionnaire values are outside allowed ranges.');
+    throw ApiException(
+      HttpStatus.badRequest,
+      'questionnaire values are outside allowed ranges.',
+    );
   }
-  final weekly = (questionnaire['activeDaysPerWeek'] as num) *
+  final weekly =
+      (questionnaire['activeDaysPerWeek'] as num) *
       (questionnaire['activeMinutesPerDay'] as num);
   final heightMetres = (questionnaire['heightCm'] as num) / 100;
-  final bmi = (questionnaire['weightKg'] as num) /
-      (heightMetres * heightMetres);
-  final averageSystolic = ((questionnaire['bpOneSystolic'] as num) +
+  final bmi =
+      (questionnaire['weightKg'] as num) / (heightMetres * heightMetres);
+  final averageSystolic =
+      ((questionnaire['bpOneSystolic'] as num) +
           (questionnaire['bpTwoSystolic'] as num)) /
       2;
-  final averageDiastolic = ((questionnaire['bpOneDiastolic'] as num) +
+  final averageDiastolic =
+      ((questionnaire['bpOneDiastolic'] as num) +
           (questionnaire['bpTwoDiastolic'] as num)) /
       2;
   bool differs(num actual, num expected) => (actual - expected).abs() > 0.0001;
@@ -641,10 +1505,16 @@ void _validateQuestionnaire(Object? value) {
       'questionnaire derived values do not match the recorded measurements.',
     );
   }
-  for (final field in allowed.difference({...requiredText, ...requiredNumbers})) {
+  for (final field in allowed.difference({
+    ...requiredText,
+    ...requiredNumbers,
+  })) {
     final item = questionnaire[field];
     if (item != null && item is! String) {
-      throw ApiException(HttpStatus.badRequest, 'questionnaire.$field must be text or null.');
+      throw ApiException(
+        HttpStatus.badRequest,
+        'questionnaire.$field must be text or null.',
+      );
     }
   }
 }
@@ -653,12 +1523,6 @@ void _requireCollectorMayUpdate(
   Map<String, dynamic> existing,
   Map<String, dynamic> incoming,
 ) {
-  if (_isArchived(existing)) {
-    throw ApiException(
-      HttpStatus.conflict,
-      'Archived records can only be changed through admin routes.',
-    );
-  }
   if (incoming['collectorId'] != existing['collectorId'] ||
       _participant(incoming)['studyId'] != _participant(existing)['studyId']) {
     throw ApiException(
@@ -713,6 +1577,36 @@ Map<String, dynamic> _participant(Map<String, dynamic> record) =>
     Map<String, dynamic>.from(record['participant'] as Map);
 
 bool _isArchived(Map<String, dynamic> record) => record['archivedAt'] != null;
+
+int? _extractCollectorNumber(String collectorId) {
+  final match = RegExp(
+    r'^C(\d+)$',
+    caseSensitive: false,
+  ).firstMatch(collectorId.trim());
+  if (match != null) {
+    return int.tryParse(match.group(1)!);
+  }
+  final matchDigits = RegExp(r'(\d+)$').firstMatch(collectorId.trim());
+  if (matchDigits != null) {
+    return int.tryParse(matchDigits.group(1)!);
+  }
+  return null;
+}
+
+bool _phoneMatches(String storedPhone, String queryPhone) {
+  final cleanStored = storedPhone.trim();
+  final cleanQuery = queryPhone.trim();
+  if (cleanStored == cleanQuery) return true;
+  final digitsStored = cleanStored.replaceAll(RegExp(r'\D'), '');
+  final digitsQuery = cleanQuery.replaceAll(RegExp(r'\D'), '');
+  if (digitsStored.isNotEmpty && digitsStored == digitsQuery) return true;
+  if (digitsStored.length >= 10 &&
+      digitsQuery.length == 10 &&
+      digitsStored.endsWith(digitsQuery)) {
+    return true;
+  }
+  return false;
+}
 
 String _now() => DateTime.now().toUtc().toIso8601String();
 

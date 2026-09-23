@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'collector/collector_cloud_controller.dart';
 import 'collector_auth/collector_access.dart';
-import 'cloud/study_cloud_gateway.dart';
+import 'cloud/study_cloud_gateway.dart' hide ParticipantLookupResult;
+import 'domain/participant_id.dart';
 import 'domain/participant_profile.dart';
 import 'domain/study_configuration.dart';
 import 'domain/visit_record.dart';
@@ -13,18 +16,29 @@ import 'local_sync/http_local_record_sync_client.dart';
 import 'local_sync/local_record_sync_gateway.dart';
 import 'local_storage/local_record_store.dart';
 import 'presentation/presentation.dart' as ui;
+import 'presentation/presentation_widgets.dart' as ui;
+
+bool get _isTestEnvironment {
+  try {
+    return Platform.environment.containsKey('FLUTTER_TEST');
+  } catch (_) {
+    return false;
+  }
+}
 
 class LocalDemoApp extends StatefulWidget {
   const LocalDemoApp({
     this.syncGateway,
     this.recordStore,
     this.cloudController,
+    this.secureStorage,
     super.key,
   });
 
   final LocalRecordSyncGateway? syncGateway;
   final LocalRecordStore? recordStore;
   final CollectorCloudController? cloudController;
+  final FlutterSecureStorage? secureStorage;
 
   @override
   State<LocalDemoApp> createState() => _LocalDemoAppState();
@@ -41,6 +55,9 @@ class _LocalRecord {
     this.questionnaire,
     String? idempotencyKey,
     this.syncState = ui.SyncState.pending,
+    this.syncConflict = false,
+    this.conflictId,
+    this.conflictMessage,
   }) : idempotencyKey = idempotencyKey ?? 'upload_$id';
 
   final String id;
@@ -52,6 +69,9 @@ class _LocalRecord {
   final NcdQuestionnaire? questionnaire;
   final String idempotencyKey;
   ui.SyncState syncState;
+  bool syncConflict;
+  String? conflictId;
+  String? conflictMessage;
 
   factory _LocalRecord.fromStorageJson(Map<String, Object?> json) {
     final participantValue = json['participant'];
@@ -94,10 +114,16 @@ class _LocalRecord {
       questionnaire: NcdQuestionnaire.fromMap(json['questionnaire']),
       idempotencyKey: json['idempotencyKey']?.toString(),
       syncState: syncState,
+      syncConflict: json['syncConflict'] == true,
+      conflictId: json['conflictId']?.toString(),
+      conflictMessage: json['conflictMessage']?.toString(),
     );
   }
 
-  Map<String, Object?> toVisitRecordJson({ui.SyncState? syncState}) => {
+  Map<String, Object?> toVisitRecordJson({
+    ui.SyncState? syncState,
+    bool includeLocalMetadata = false,
+  }) => {
     'id': id,
     'participant': {
       'studyId': participant.studyId,
@@ -125,46 +151,163 @@ class _LocalRecord {
     'questionnaire': questionnaire?.toMap(),
     'idempotencyKey': idempotencyKey,
     'submittedAt': submittedAt.toUtc().toIso8601String(),
+    if (includeLocalMetadata) ...{
+      'syncConflict': syncConflict,
+      if (conflictId != null) 'conflictId': conflictId,
+      if (conflictMessage != null) 'conflictMessage': conflictMessage,
+    },
   };
 }
 
-class _LocalDemoAppState extends State<LocalDemoApp> {
+class _LocalDemoAppState extends State<LocalDemoApp>
+    with WidgetsBindingObserver {
+  static const _envCollectorId = String.fromEnvironment('LOCAL_COLLECTOR_ID');
+  static const _envCollectorNumber =
+      String.fromEnvironment('LOCAL_COLLECTOR_NUMBER');
+
+  static final Map<LocalRecordStore, String> _storeProvisioning = {};
+
+  static String? _resolveConfiguredCollectorCode() {
+    if (_envCollectorId.isNotEmpty) {
+      final raw = _envCollectorId.trim().toUpperCase();
+      final match = RegExp(r'^C?(\d+)$').firstMatch(raw);
+      if (match != null) {
+        final num = int.tryParse(match.group(1)!);
+        if (num != null && num >= 1 && num <= 99) {
+          return 'C${num.toString().padLeft(3, '0')}';
+        }
+      }
+    }
+    if (_envCollectorNumber.isNotEmpty) {
+      final num = int.tryParse(_envCollectorNumber.trim());
+      if (num != null && num >= 1 && num <= 99) {
+        return 'C${num.toString().padLeft(3, '0')}';
+      }
+    }
+    return null;
+  }
+
   static const _demoCollectorCode = 'C001';
+  static const _retryInterval = Duration(seconds: 30);
   final List<_LocalRecord> _records = [];
   bool _isSignedIn = false;
   bool _isSigningIn = false;
   String _collectorCode = _demoCollectorCode;
+  String? _provisionedCollectorCode;
   bool _isRetrying = false;
   bool _isLoadingRecords = true;
   String? _recordLoadError;
   Future<void> _writeTail = Future<void>.value();
   late final LocalRecordSyncGateway _syncGateway;
   late final LocalRecordStore _recordStore;
+  Timer? _retryTimer;
+  bool _isAppActive = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _syncGateway = widget.syncGateway ?? HttpLocalRecordSyncClient();
     _recordStore = widget.recordStore ?? SecureLocalRecordStore();
+    final envCode = _resolveConfiguredCollectorCode();
+    if (envCode != null) {
+      _collectorCode = envCode;
+      _provisionedCollectorCode = envCode;
+      _isSignedIn = true;
+      _startRetryTimer();
+      unawaited(_persistProvisionedCollectorCode(envCode));
+    }
     unawaited(_restoreRecords());
   }
 
+  Future<void> _persistProvisionedCollectorCode(String code) async {
+    _provisionedCollectorCode = code;
+    if (widget.recordStore != null) {
+      _storeProvisioning[widget.recordStore!] = code;
+    }
+    if (widget.secureStorage != null) {
+      try {
+        await widget.secureStorage!.write(
+          key: 'provisioned_collector_code',
+          value: code,
+        );
+      } catch (_) {}
+    } else if (!_isTestEnvironment) {
+      try {
+        const storage = FlutterSecureStorage();
+        await storage.write(key: 'provisioned_collector_code', value: code);
+      } catch (_) {
+        // Secure storage might be unavailable in unit test environment.
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _retryTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _isAppActive = state == AppLifecycleState.resumed;
+    if (_isAppActive && _isSignedIn) {
+      unawaited(_retryPendingSubmissions(onlyPending: true));
+    }
+  }
+
+  void _startRetryTimer() {
+    _retryTimer?.cancel();
+    _retryTimer = Timer.periodic(_retryInterval, (_) {
+      if (mounted && _isAppActive && _isSignedIn) {
+        unawaited(_retryPendingSubmissions(onlyPending: true));
+      }
+    });
+  }
+
   Future<void> _signIn(ui.CollectorAccessInput credentials) async {
-    final cloud = widget.cloudController;
-    if (cloud == null && credentials.collectorCode != _demoCollectorCode) {
+    final rawCode = credentials.collectorCode.trim().toUpperCase();
+    final numberMatch = RegExp(r'^C?(\d+)$').firstMatch(rawCode);
+    final number =
+        numberMatch != null ? int.tryParse(numberMatch.group(1)!) : null;
+
+    if (number == null || number < 1 || number > 99) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Use the local demo code shown below.')),
+        const SnackBar(
+          content: Text('Collector number must be between 1 and 99.'),
+        ),
       );
       return;
     }
+
+    final formattedCode = 'C${number.toString().padLeft(3, '0')}';
+
+    // Lock check: Once provisioned, lock the collector number to this phone
+    if (_provisionedCollectorCode != null &&
+        _provisionedCollectorCode != formattedCode) {
+      final lockedNum = int.tryParse(
+            _provisionedCollectorCode!.replaceAll(RegExp(r'\D'), ''),
+          ) ??
+          _provisionedCollectorCode;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'This phone is locked to Collector $lockedNum. You cannot switch collector accounts.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final cloud = widget.cloudController;
     if (cloud != null) {
       setState(() => _isSigningIn = true);
       try {
         final resolution = await cloud.restoreOrClaim(
-          collectorCode: CollectorCode(credentials.collectorCode),
+          collectorCode: CollectorCode(formattedCode),
         );
-        if (resolution.session.collectorCode.value !=
-            credentials.collectorCode) {
+        if (resolution.session.collectorCode.value != formattedCode) {
           throw const CollectorAccessException(
             CollectorAccessFailure.boundToAnotherDevice,
           );
@@ -198,14 +341,19 @@ class _LocalDemoAppState extends State<LocalDemoApp> {
       }
     }
     if (!mounted) return;
+    await _persistProvisionedCollectorCode(formattedCode);
     setState(() {
-      _collectorCode = credentials.collectorCode;
+      _collectorCode = formattedCode;
       _isSignedIn = true;
     });
+    _startRetryTimer();
     unawaited(_retryPendingSubmissions());
   }
 
-  void _signOut() => setState(() => _isSignedIn = false);
+  void _signOut() {
+    _retryTimer?.cancel();
+    setState(() => _isSignedIn = false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -262,7 +410,7 @@ class _LocalDemoAppState extends State<LocalDemoApp> {
                   child: Padding(
                     padding: EdgeInsets.all(10),
                     child: Text(
-                      'LOCAL DEMO · collector number: 1',
+                      'LOCAL DEMO · collector numbers: 1 to 99',
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -285,6 +433,35 @@ class _LocalDemoAppState extends State<LocalDemoApp> {
     try {
       final stored = await _recordStore.readAll();
       final restored = stored.map(_LocalRecord.fromStorageJson).toList();
+      if (_provisionedCollectorCode == null) {
+        if (widget.recordStore != null &&
+            _storeProvisioning.containsKey(widget.recordStore!)) {
+          _provisionedCollectorCode = _storeProvisioning[widget.recordStore!];
+        }
+      }
+      if (_provisionedCollectorCode == null) {
+        if (widget.secureStorage != null) {
+          try {
+            final code = await widget.secureStorage!.read(
+              key: 'provisioned_collector_code',
+            );
+            if (code != null && code.isNotEmpty) {
+              _provisionedCollectorCode = code;
+            }
+          } catch (_) {}
+        } else if (!_isTestEnvironment) {
+          try {
+            const storage = FlutterSecureStorage();
+            final code = await storage.read(key: 'provisioned_collector_code');
+            if (code != null && code.isNotEmpty) {
+              _provisionedCollectorCode = code;
+            }
+          } catch (_) {}
+        }
+      }
+      if (_provisionedCollectorCode == null && restored.isNotEmpty) {
+        _provisionedCollectorCode = restored.first.collector;
+      }
       if (!mounted) return;
       setState(() {
         _records
@@ -292,6 +469,9 @@ class _LocalDemoAppState extends State<LocalDemoApp> {
           ..addAll(restored);
         _isLoadingRecords = false;
       });
+      if (_isSignedIn) {
+        unawaited(_retryPendingSubmissions());
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -303,7 +483,7 @@ class _LocalDemoAppState extends State<LocalDemoApp> {
 
   Future<void> _persistRecords() {
     final snapshot = _records
-        .map((record) => record.toVisitRecordJson())
+        .map((record) => record.toVisitRecordJson(includeLocalMetadata: true))
         .toList(growable: false);
     _writeTail = _writeTail.then(
       (_) => _recordStore.writeAll(snapshot),
@@ -314,12 +494,22 @@ class _LocalDemoAppState extends State<LocalDemoApp> {
 
   Future<void> _persistSubmittedRecord(_LocalRecord record) async {
     final index = _records.indexWhere((existing) => existing.id == record.id);
+    final previous = index == -1 ? null : _records[index];
     if (index == -1) {
       _records.add(record);
     } else {
       _records[index] = record;
     }
-    await _persistRecords();
+    try {
+      await _persistRecords();
+    } catch (_) {
+      if (index == -1) {
+        _records.remove(record);
+      } else {
+        _records[index] = previous!;
+      }
+      rethrow;
+    }
   }
 
   Widget _collectorHome() {
@@ -330,12 +520,14 @@ class _LocalDemoAppState extends State<LocalDemoApp> {
         .reversed
         .toList();
     return ui.CollectorHomeScreen(
-      collectorName: 'Collector ${int.parse(_collectorCode.substring(1))}',
+      collectorName:
+          'Collector ${int.tryParse(_collectorCode.replaceAll(RegExp(r'\D'), '')) ?? 1}',
       pendingCount: _records
           .where(
             (record) =>
-                record.syncState == ui.SyncState.pending ||
-                record.syncState == ui.SyncState.failed,
+                !record.syncConflict &&
+                (record.syncState == ui.SyncState.pending ||
+                    record.syncState == ui.SyncState.failed),
           )
           .length,
       recentSubmissions: submissions.take(5).toList(),
@@ -378,6 +570,19 @@ class _LocalDemoAppState extends State<LocalDemoApp> {
     final matchingPhone = _records
         .where((record) => record.participant.phone == canonicalPhone)
         .toList();
+    final localCandidates = <String, ParticipantLookupCandidate>{};
+    for (final record in matchingPhone) {
+      final id = normalizeParticipantStudyId(record.participant.studyId);
+      if (id == null) continue;
+      final previous = localCandidates[id];
+      final nextVisit = record.visitNumber + 1;
+      localCandidates[id] = ParticipantLookupCandidate(
+        studyId: id,
+        name: record.participant.name,
+        nextVisitNumber: previous == null || nextVisit > previous.nextVisitNumber
+            ? nextVisit : previous.nextVisitNumber,
+      );
+    }
     String? participantNumber;
     var visitNumber = 1;
     String? allocatedVisitId;
@@ -409,19 +614,60 @@ class _LocalDemoAppState extends State<LocalDemoApp> {
         return;
       }
     } else {
-      participantNumber = matchingPhone.isNotEmpty
-          ? matchingPhone.last.participant.studyId
-          : _nextParticipantNumber();
+      // Consult both sources: the phone may have one local Study ID and a
+      // different Study ID on the PC. A local match alone is not conclusive.
+      ParticipantLookupResult? lookup;
+      try {
+        lookup = await _syncGateway
+            .lookupParticipant(canonicalPhone)
+            .timeout(const Duration(seconds: 3));
+      } catch (_) {
+        lookup = null;
+      }
+      if (!screenContext.mounted) return;
+      final candidatesById = Map<String, ParticipantLookupCandidate>.of(
+        localCandidates,
+      );
+      final remoteCandidates = lookup?.isAmbiguous == true
+          ? lookup!.candidates
+          : lookup?.found == true && lookup?.studyId != null
+              ? [
+                  ParticipantLookupCandidate(
+                    studyId: lookup!.studyId!,
+                    name: lookup.name?.trim().isNotEmpty == true
+                        ? lookup.name!.trim() : assignedName,
+                    nextVisitNumber: lookup.nextVisitNumber ?? 2,
+                  ),
+                ]
+              : <ParticipantLookupCandidate>[];
+      for (final remote in remoteCandidates) {
+        final id = normalizeParticipantStudyId(remote.studyId);
+        if (id == null) continue;
+        final local = candidatesById[id];
+        candidatesById[id] = ParticipantLookupCandidate(
+          studyId: id,
+          name: remote.name,
+          nextVisitNumber: local == null ||
+                  remote.nextVisitNumber > local.nextVisitNumber
+              ? remote.nextVisitNumber : local.nextVisitNumber,
+        );
+      }
+      final candidates = candidatesById.values.toList();
+      ParticipantLookupCandidate? selected;
+      if (candidates.length == 1 &&
+          candidates.single.name.trim().toLowerCase() ==
+              assignedName.toLowerCase()) {
+        selected = candidates.single;
+      } else if (candidates.isNotEmpty) {
+        final choice = await _chooseParticipantForPhone(screenContext, candidates);
+        if (choice == null) return;
+        selected = choice.candidate;
+      }
+      participantNumber = selected?.studyId ?? _nextParticipantNumber();
+      assignedName = selected?.name ?? assignedName;
+      visitNumber = selected?.nextVisitNumber ?? 1;
     }
     if (!screenContext.mounted) return;
-    if (participantNumber == null) {
-      ScaffoldMessenger.of(screenContext).showSnackBar(
-        const SnackBar(
-          content: Text('The configured participant range is full.'),
-        ),
-      );
-      return;
-    }
     final normalized = ui.ParticipantDraft(
       studyId: participantNumber,
       name: assignedName,
@@ -458,9 +704,8 @@ class _LocalDemoAppState extends State<LocalDemoApp> {
       }
     }
 
-    if (cloud == null) {
-      visitNumber =
-          prior.fold<int>(
+    if (cloud == null && prior.isNotEmpty) {
+      visitNumber = prior.fold<int>(
             0,
             (max, record) =>
                 record.visitNumber > max ? record.visitNumber : max,
@@ -477,6 +722,8 @@ class _LocalDemoAppState extends State<LocalDemoApp> {
           visitId: allocatedVisitId,
           onSync: _syncRecord,
           onPersist: _persistSubmittedRecord,
+          onLookupPriorRecords: (studyId) =>
+              _records.where((r) => r.participant.studyId == studyId).toList(),
         ),
       ),
     );
@@ -487,49 +734,126 @@ class _LocalDemoAppState extends State<LocalDemoApp> {
     if (screenContext.mounted) Navigator.pop(screenContext);
   }
 
-  String? _nextParticipantNumber() {
-    final usedNumbers = _records
-        .map(
-          (record) =>
-              int.tryParse(record.participant.studyId.substring(1)) ?? 0,
-        )
-        .toSet();
-    for (var number = 1; number <= 200; number++) {
-      if (!usedNumbers.contains(number)) {
-        return 'P${number.toString().padLeft(3, '0')}';
+  Future<_ParticipantSelection?> _chooseParticipantForPhone(
+    BuildContext context,
+    List<ParticipantLookupCandidate> candidates,
+  ) => showDialog<_ParticipantSelection>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Choose participant'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Text(
+              'This phone number may be shared. Check the participant’s '
+              'study card or logbook before choosing a Study ID.',
+            ),
+            const SizedBox(height: 12),
+            for (final candidate in candidates)
+              ListTile(
+                title: Text('${candidate.name} · ${candidate.studyId}'),
+                subtitle: Text('Next visit ${candidate.nextVisitNumber}'),
+                onTap: () => Navigator.pop(
+                  dialogContext,
+                  _ParticipantSelection(candidate),
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(
+            dialogContext,
+            const _ParticipantSelection(null),
+          ),
+          child: const Text('New participant'),
+        ),
+      ],
+    ),
+  );
+
+  int _collectorNumber() {
+    final digits = _collectorCode.replaceAll(RegExp(r'\D'), '');
+    return int.tryParse(digits) ?? 1;
+  }
+
+  String _nextParticipantNumber() {
+    final collectorNum = _collectorNumber();
+    final prefix = collectorParticipantPrefix(collectorNum);
+    var maxSeq = 0;
+    for (final record in _records) {
+      final studyId = normalizeParticipantStudyId(record.participant.studyId);
+      if (studyId != null && studyId.startsWith(prefix)) {
+        final seqPart = studyId.substring(prefix.length);
+        final seq = int.tryParse(seqPart);
+        if (seq != null && seq > maxSeq) {
+          maxSeq = seq;
+        }
       }
     }
-    return null;
+    return formatCollectorParticipantStudyId(collectorNum, maxSeq + 1);
   }
 
   void _openSubmissions(List<ui.SubmissionSummary> submissions) {
     Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (screenContext) => ui.MySubmissionsScreen(
-          submissions: submissions,
+        builder: (screenContext) => _LocalSubmissionsScreen(
+          records: _records
+              .where((record) => record.collector == _collectorCode)
+              .toList()
+              .reversed
+              .toList(),
           onBack: () => Navigator.pop(screenContext),
-          onOpen: _openSubmission,
+          onOpen: _openSubmissionRecord,
+        ),
+      ),
+    );
+  }
+
+  void _openSubmissionRecord(_LocalRecord record) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (screenContext) => _LocalSubmissionDetailScreen(
+          record: record,
+          onBack: () => Navigator.pop(screenContext),
+          onRetry: _manualRetryRecord,
         ),
       ),
     );
   }
 
   void _openSubmission(ui.SubmissionSummary summary) {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (screenContext) => ui.SubmissionDetailScreen(
-          submission: summary,
-          onBack: () => Navigator.pop(screenContext),
-          onEdit: () => ScaffoldMessenger.of(screenContext).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Editing submitted entries is not available in this demo.',
-              ),
-            ),
-          ),
-        ),
-      ),
+    final record = _records.cast<_LocalRecord?>().firstWhere(
+      (r) => r?.id == summary.id,
+      orElse: () => null,
     );
+    if (record != null) {
+      _openSubmissionRecord(record);
+    }
+  }
+
+  Future<void> _manualRetryRecord(_LocalRecord record) async {
+    setState(() => _isRetrying = true);
+    try {
+      await _syncRecord(record);
+      await _persistRecords();
+      if (mounted) {
+        if (record.syncState == ui.SyncState.synced) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Record synced successfully.')),
+          );
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _isRetrying = false);
+    }
   }
 
   ui.SubmissionSummary _summary(_LocalRecord record) => ui.SubmissionSummary(
@@ -541,22 +865,37 @@ class _LocalDemoAppState extends State<LocalDemoApp> {
     syncState: record.syncState,
   );
 
-  Future<void> _retryPendingSubmissions() async {
+  Future<void> _retryPendingSubmissions({bool onlyPending = false}) async {
     if (_isRetrying) return;
     final pending = _records
         .where(
           (record) =>
-              record.syncState == ui.SyncState.pending ||
-              record.syncState == ui.SyncState.failed,
+              !record.syncConflict &&
+              (record.syncState == ui.SyncState.pending ||
+                  (!onlyPending && record.syncState == ui.SyncState.failed)),
         )
         .toList();
     if (pending.isEmpty) return;
 
     if (!mounted) return;
     setState(() => _isRetrying = true);
-    await Future.wait(pending.map(_syncRecord));
-    await _persistRecords();
-    if (mounted) setState(() => _isRetrying = false);
+    try {
+      for (final record in pending) {
+        await _syncRecord(record);
+        try {
+          await _persistRecords();
+        } catch (_) {
+          // A previously saved pending record remains durable, even if the
+          // server accepted it but saving the new sync marker failed.
+          record.syncState = record.syncConflict
+              ? ui.SyncState.failed
+              : ui.SyncState.pending;
+          break;
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _isRetrying = false);
+    }
   }
 
   Future<void> _syncRecord(_LocalRecord record) async {
@@ -568,6 +907,9 @@ class _LocalDemoAppState extends State<LocalDemoApp> {
           idempotencyKey: record.idempotencyKey,
         );
         record.syncState = ui.SyncState.synced;
+        record.syncConflict = false;
+        record.conflictId = null;
+        record.conflictMessage = null;
       } on CollectorSessionRequiredException {
         record.syncState = ui.SyncState.failed;
       } catch (_) {
@@ -575,15 +917,70 @@ class _LocalDemoAppState extends State<LocalDemoApp> {
       }
       return;
     }
-    final result = await _syncGateway.sendRecord(
-      record.toVisitRecordJson(syncState: ui.SyncState.synced),
-    );
-    record.syncState = switch (result) {
-      LocalRecordSyncResult.synced => ui.SyncState.synced,
-      LocalRecordSyncResult.pending => ui.SyncState.pending,
-      LocalRecordSyncResult.failed => ui.SyncState.failed,
-    };
+    try {
+      final syncPayload =
+          record.toVisitRecordJson(syncState: ui.SyncState.synced);
+      SyncResponse response;
+      if (_syncGateway is HttpLocalRecordSyncClient) {
+        response = await _syncGateway.sendRecordDetailed(syncPayload);
+      } else {
+        try {
+          final dynamic dynGw = _syncGateway;
+          final dynamic res = await dynGw.sendRecordDetailed(syncPayload);
+          if (res is SyncResponse) {
+            response = res;
+          } else {
+            response = await _syncGateway.sendRecordDetailed(syncPayload);
+          }
+        } catch (_) {
+          response = await _syncGateway.sendRecordDetailed(syncPayload);
+        }
+      }
+      switch (response.result) {
+        case LocalRecordSyncResult.synced:
+          record.syncState = ui.SyncState.synced;
+          record.syncConflict = false;
+          record.conflictId = null;
+          record.conflictMessage = null;
+        case LocalRecordSyncResult.pending:
+          // Keep a known conflict out of automatic retry loops if the next
+          // manual attempt happens while the server is unavailable.
+          record.syncState = record.syncConflict
+              ? ui.SyncState.failed
+              : ui.SyncState.pending;
+        case LocalRecordSyncResult.failed:
+          record.syncState = ui.SyncState.failed;
+        case LocalRecordSyncResult.conflict:
+          record.syncState = ui.SyncState.failed;
+          record.syncConflict = true;
+          final lastResp = _syncGateway.lastResponse;
+          record.conflictId = response.conflictId ??
+              lastResp?.conflictId ??
+              'CONFLICT-${record.id}';
+          record.conflictMessage = response.message ??
+              lastResp?.message ??
+              'HTTP 409 Conflict: A conflicting record already exists on the server.';
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Sync conflict: entry is saved on this phone and needs admin review.',
+                ),
+              ),
+            );
+          }
+      }
+    } catch (_) {
+      record.syncState = record.syncConflict
+          ? ui.SyncState.failed
+          : ui.SyncState.pending;
+    }
   }
+}
+
+class _ParticipantSelection {
+  const _ParticipantSelection(this.candidate);
+  final ParticipantLookupCandidate? candidate;
 }
 
 VisitRecord _domainRecord(_LocalRecord record) {
@@ -635,6 +1032,7 @@ class _LocalVisitFlow extends StatefulWidget {
     required this.onSync,
     required this.onPersist,
     this.visitId,
+    this.onLookupPriorRecords,
   });
 
   final ui.ParticipantDraft participant;
@@ -643,6 +1041,7 @@ class _LocalVisitFlow extends StatefulWidget {
   final String? visitId;
   final Future<void> Function(_LocalRecord record) onSync;
   final Future<void> Function(_LocalRecord record) onPersist;
+  final List<_LocalRecord> Function(String studyId)? onLookupPriorRecords;
 
   @override
   State<_LocalVisitFlow> createState() => _LocalVisitFlowState();
@@ -650,18 +1049,49 @@ class _LocalVisitFlow extends StatefulWidget {
 
 class _LocalVisitFlowState extends State<_LocalVisitFlow> {
   int _step = 0;
+  late ui.ParticipantDraft _participant;
+  late int _visitNumber;
   NcdQuestionnaire? _questionnaire;
   String? _stepTwoNote;
   _LocalRecord? _record;
   bool _isSubmitting = false;
 
   @override
+  void initState() {
+    super.initState();
+    _participant = widget.participant;
+    _visitNumber = widget.visitNumber;
+  }
+
+  void _specifyExistingStudyId(String newStudyId, int? visitNum) {
+    final normalizedId = normalizeParticipantStudyId(newStudyId) ?? _normalizeStudyId(newStudyId);
+    final prior = widget.onLookupPriorRecords?.call(normalizedId) ?? [];
+    final resolvedVisit = visitNum ??
+        (prior.isNotEmpty
+            ? prior.fold<int>(
+                  0,
+                  (max, r) => r.visitNumber > max ? r.visitNumber : max,
+                ) +
+                1
+            : 2);
+    setState(() {
+      _participant = ui.ParticipantDraft(
+        studyId: normalizedId,
+        name: _participant.name,
+        phone: _participant.phone,
+      );
+      _visitNumber = resolvedVisit;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) => switch (_step) {
-    0 => ui.VisitConfirmationScreen(
-      participant: widget.participant,
-      proposedVisitNumber: widget.visitNumber,
+    0 => _LocalVisitConfirmationScreen(
+      participant: _participant,
+      proposedVisitNumber: _visitNumber,
       onBack: () => Navigator.pop(context),
       onConfirm: () => setState(() => _step = 1),
+      onSpecifyExistingId: _specifyExistingStudyId,
     ),
     1 => ui.NcdQuestionnaireScreen(
       onBack: () => setState(() => _step = 0),
@@ -682,8 +1112,8 @@ class _LocalVisitFlowState extends State<_LocalVisitFlow> {
       }),
     ),
     3 => ui.ReviewScreen(
-      participant: widget.participant,
-      visitNumber: widget.visitNumber,
+      participant: _participant,
+      visitNumber: _visitNumber,
       questionnaire: _questionnaire,
       optionalNote: _stepTwoNote,
       onBack: () => setState(() => _step = 2),
@@ -693,9 +1123,9 @@ class _LocalVisitFlowState extends State<_LocalVisitFlow> {
     _ => ui.ReceiptScreen(
       submission: ui.SubmissionSummary(
         id: _record!.id,
-        participantName: widget.participant.name,
-        studyId: widget.participant.studyId,
-        visitNumber: widget.visitNumber,
+        participantName: _participant.name,
+        studyId: _participant.studyId,
+        visitNumber: _visitNumber,
         submittedAt: _record!.submittedAt,
         syncState: _record!.syncState,
       ),
@@ -710,23 +1140,13 @@ class _LocalVisitFlowState extends State<_LocalVisitFlow> {
     if (record == null) return;
     Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (screenContext) => ui.SubmissionDetailScreen(
-          submission: ui.SubmissionSummary(
-            id: record.id,
-            participantName: record.participant.name,
-            studyId: record.participant.studyId,
-            visitNumber: record.visitNumber,
-            submittedAt: record.submittedAt,
-            syncState: record.syncState,
-          ),
+        builder: (screenContext) => _LocalSubmissionDetailScreen(
+          record: record,
           onBack: () => Navigator.pop(screenContext),
-          onEdit: () => ScaffoldMessenger.of(screenContext).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Editing submitted entries is not available in this demo.',
-              ),
-            ),
-          ),
+          onRetry: (r) async {
+            await widget.onSync(r);
+            await widget.onPersist(r);
+          },
         ),
       ),
     );
@@ -736,8 +1156,8 @@ class _LocalVisitFlowState extends State<_LocalVisitFlow> {
     final now = DateTime.now();
     final record = _LocalRecord(
       id: widget.visitId ?? 'LOCAL-${now.microsecondsSinceEpoch}',
-      participant: widget.participant,
-      visitNumber: widget.visitNumber,
+      participant: _participant,
+      visitNumber: _visitNumber,
       collector: widget.collectorCode,
       submittedAt: now,
       stepTwoNote: _stepTwoNote,
@@ -747,12 +1167,657 @@ class _LocalVisitFlowState extends State<_LocalVisitFlow> {
       _record = record;
       _isSubmitting = true;
     });
-    await widget.onSync(record);
-    await widget.onPersist(record);
+    try {
+      // A completed visit must be durable on the phone before any network
+      // request can succeed. The server can then be unavailable indefinitely.
+      await widget.onPersist(record);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _record = null;
+        _isSubmitting = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not save on this phone. Entry was not sent. Try again.',
+          ),
+        ),
+      );
+      return;
+    }
+    try {
+      await widget.onSync(record);
+      await widget.onPersist(record);
+    } catch (_) {
+      // The first write succeeded, so a pending copy is still on the phone.
+      record.syncState = record.syncConflict
+          ? ui.SyncState.failed
+          : ui.SyncState.pending;
+    }
     if (!mounted) return;
     setState(() {
       _isSubmitting = false;
       _step = 4;
     });
   }
+}
+
+String _normalizeStudyId(String input) {
+  final trimmed = input.trim().toUpperCase();
+  if (trimmed.startsWith('P')) {
+    final numPart = int.tryParse(trimmed.substring(1));
+    if (numPart != null) {
+      return 'P${numPart.toString().padLeft(3, '0')}';
+    }
+  } else {
+    final numPart = int.tryParse(trimmed);
+    if (numPart != null) {
+      return 'P${numPart.toString().padLeft(3, '0')}';
+    }
+  }
+  return trimmed;
+}
+
+class _ConflictBadge extends StatelessWidget {
+  const _ConflictBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: theme.colorScheme.error,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.warning_amber_rounded,
+            size: 14,
+            color: theme.colorScheme.error,
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              'Sync Conflict - Review Required',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.error,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocalVisitConfirmationScreen extends StatelessWidget {
+  const _LocalVisitConfirmationScreen({
+    required this.participant,
+    required this.proposedVisitNumber,
+    required this.onConfirm,
+    required this.onBack,
+    required this.onSpecifyExistingId,
+  });
+
+  final ui.ParticipantDraft participant;
+  final int proposedVisitNumber;
+  final VoidCallback onConfirm;
+  final VoidCallback onBack;
+  final void Function(String studyId, int? visitNum) onSpecifyExistingId;
+
+  void _showSpecifyDialog(BuildContext context) {
+    final idController = TextEditingController();
+    final visitController = TextEditingController(
+      text: proposedVisitNumber == 1 ? '2' : '$proposedVisitNumber',
+    );
+    String? errorMessage;
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Specify Study ID from card/logbook'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'If this participant was enrolled on another collector\'s phone, '
+                'enter their existing Study ID from their study card or logbook:',
+              ),
+              const SizedBox(height: 16),
+              if (errorMessage != null) ...[
+                Text(
+                  errorMessage!,
+                  style: TextStyle(
+                    color: Theme.of(dialogContext).colorScheme.error,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              TextFormField(
+                controller: idController,
+                autofocus: true,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Study ID from card/logbook',
+                  hintText: 'e.g. P001',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: visitController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Visit number',
+                  hintText: '2',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final text = idController.text.trim();
+                final normalized = normalizeParticipantStudyId(text);
+                if (normalized == null || !isValidParticipantStudyId(text)) {
+                  setDialogState(() {
+                    errorMessage =
+                        'Invalid Study ID format. Must be like C01-000001 or P001.';
+                  });
+                  return;
+                }
+                final visitText = visitController.text.trim();
+                final isInteger = RegExp(r'^\d+$').hasMatch(visitText);
+                final visit = isInteger ? int.tryParse(visitText) : null;
+                if (visit == null || visit < 2) {
+                  setDialogState(() {
+                    errorMessage =
+                        'Visit number must be an integer of 2 or greater.';
+                  });
+                  return;
+                }
+                onSpecifyExistingId(normalized, visit);
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Confirm Study ID'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => ui.ResponsivePage(
+    appBar: AppBar(leading: BackButton(onPressed: onBack)),
+    child: ListView(
+      children: [
+        const ui.PageHeading(
+          title: 'Confirm visit',
+          subtitle:
+              'Check the automatically assigned participant and visit numbers.',
+        ),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _DetailRow(
+                  label: 'Participant number',
+                  value: participant.studyId,
+                ),
+                _DetailRow(
+                  label: 'Participant name',
+                  value: participant.name,
+                ),
+                _DetailRow(
+                  label: 'Phone number',
+                  value: participant.phone,
+                ),
+                const Divider(height: 32),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: Theme.of(context)
+                        .colorScheme
+                        .primaryContainer,
+                    child: Text('$proposedVisitNumber'),
+                  ),
+                  title: Text(
+                    proposedVisitNumber == 1
+                        ? 'First visit'
+                        : 'Visit $proposedVisitNumber',
+                  ),
+                  subtitle: Text(
+                    proposedVisitNumber == 1
+                        ? 'A new participant number has been assigned.'
+                        : 'Updated automatically from this participant’s history.',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: () => _showSpecifyDialog(context),
+                  icon: const Icon(Icons.badge_outlined),
+                  label: const Text(
+                    'Specify existing Study ID (from card/logbook)',
+                  ),
+                ),
+                const SizedBox(height: 20),
+                FilledButton(
+                  onPressed: onConfirm,
+                  child: const Text('Confirm and continue'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 4),
+        Text(value, style: Theme.of(context).textTheme.titleMedium),
+      ],
+    ),
+  );
+}
+
+class _LocalSubmissionsScreen extends StatefulWidget {
+  const _LocalSubmissionsScreen({
+    required this.records,
+    required this.onOpen,
+    this.onBack,
+  });
+
+  final List<_LocalRecord> records;
+  final ValueChanged<_LocalRecord> onOpen;
+  final VoidCallback? onBack;
+
+  @override
+  State<_LocalSubmissionsScreen> createState() =>
+      _LocalSubmissionsScreenState();
+}
+
+class _LocalSubmissionsScreenState extends State<_LocalSubmissionsScreen> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = widget.records.where((item) {
+      final query = _query.toLowerCase();
+      return item.participant.name.toLowerCase().contains(query) ||
+          item.participant.studyId.toLowerCase().contains(query);
+    }).toList();
+
+    return ui.ResponsivePage(
+      appBar: AppBar(leading: BackButton(onPressed: widget.onBack)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const ui.PageHeading(
+            title: 'My submissions',
+            subtitle: 'Entries created by your account.',
+          ),
+          TextField(
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: 'Search by name or Study ID',
+            ),
+            onChanged: (value) => setState(() => _query = value.trim()),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: visible.isEmpty
+                ? const ui.EmptyState(
+                    icon: Icons.search_off_outlined,
+                    title: 'No matching submissions',
+                    message:
+                        'Try a different search or create a new participant entry.',
+                  )
+                : ListView.separated(
+                    itemCount: visible.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final item = visible[index];
+                      return Card(
+                        child: InkWell(
+                          onTap: () => widget.onOpen(item),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.participant.name,
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${item.participant.studyId} · Visit ${item.visitNumber}',
+                                  style:
+                                      Theme.of(context).textTheme.bodyMedium,
+                                ),
+                                const SizedBox(height: 8),
+                                item.syncConflict
+                                    ? const _ConflictBadge()
+                                    : ui.StatusChip(state: item.syncState),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocalSubmissionDetailScreen extends StatefulWidget {
+  const _LocalSubmissionDetailScreen({
+    required this.record,
+    required this.onRetry,
+    this.onBack,
+  });
+
+  final _LocalRecord record;
+  final Future<void> Function(_LocalRecord record) onRetry;
+  final VoidCallback? onBack;
+
+  @override
+  State<_LocalSubmissionDetailScreen> createState() =>
+      _LocalSubmissionDetailScreenState();
+}
+
+class _LocalSubmissionDetailScreenState
+    extends State<_LocalSubmissionDetailScreen> {
+  bool _isRetrying = false;
+
+  void _showConflictReviewDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+        title: const Text('Conflict Review'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'A conflict (HTTP 409) occurred while uploading this submission to the study server.',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Text('Submission ID: ${widget.record.id}'),
+            if (widget.record.conflictId != null)
+              Text('Conflict Reference: ${widget.record.conflictId}'),
+            if (widget.record.conflictMessage != null)
+              Text('Conflict Details: ${widget.record.conflictMessage}'),
+            Text(
+              'Participant: ${widget.record.participant.name} (${widget.record.participant.studyId})',
+            ),
+            Text('Visit: ${widget.record.visitNumber}'),
+            Text('Recorded: ${widget.record.submittedAt.toLocal()}'),
+            const SizedBox(height: 12),
+            const Text(
+              'The entry remains safely stored locally on this phone. You can manually retry uploading once server-side conflicts are addressed.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+          FilledButton.icon(
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry Upload'),
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _retry();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _retry() async {
+    setState(() => _isRetrying = true);
+    try {
+      await widget.onRetry(widget.record);
+    } finally {
+      if (mounted) setState(() => _isRetrying = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final record = widget.record;
+    final isConflicted = record.syncConflict;
+
+    return ui.ResponsivePage(
+      appBar: AppBar(
+        leading: BackButton(onPressed: widget.onBack),
+        actions: [
+          TextButton.icon(
+            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Editing submitted entries is not available in this demo.',
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.edit_outlined),
+            label: const Text('Edit'),
+          ),
+        ],
+      ),
+      child: ListView(
+        children: [
+          ui.PageHeading(
+            title: record.participant.name,
+            subtitle:
+                '${record.participant.studyId} · Visit ${record.visitNumber}',
+          ),
+          if (isConflicted) ...[
+            Card(
+              color: Theme.of(context)
+                  .colorScheme
+                  .errorContainer
+                  .withValues(alpha: 0.3),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(
+                  color: Theme.of(context).colorScheme.error,
+                  width: 1.5,
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          color: Theme.of(context).colorScheme.error,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Sync Conflict - Review Required',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      record.conflictMessage != null
+                          ? 'HTTP 409 Conflict: ${record.conflictMessage}\n\n'
+                              'Conflict Reference: ${record.conflictId ?? record.id}\n'
+                              'Your data is safely preserved on this device and will NOT be overwritten or discarded. '
+                              'Automatic sync is paused for this record until you review and manually retry.'
+                          : 'HTTP 409 Conflict: This record conflicts with an existing entry on the server. '
+                              'Your data is safely preserved on this device and will NOT be overwritten or discarded. '
+                              'Automatic sync is paused for this record until you review and manually retry.',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () => _showConflictReviewDialog(context),
+                          icon: const Icon(Icons.rate_review_outlined),
+                          label: const Text('Review Conflict'),
+                        ),
+                        FilledButton.icon(
+                          onPressed: _isRetrying ? null : _retry,
+                          icon: _isRetrying
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.cloud_upload_outlined),
+                          label: const Text('Retry Upload'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Submission details',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 16),
+                  _DetailLine('Submission ID', record.id),
+                  if (record.conflictId != null)
+                    _DetailLine('Conflict Ref', record.conflictId!),
+                  _DetailLine(
+                    'Recorded',
+                    '${record.submittedAt.toLocal()}',
+                  ),
+                  _DetailLine(
+                    'Study ID',
+                    record.participant.studyId,
+                  ),
+                  _DetailLine(
+                    'Phone number',
+                    record.participant.phone,
+                  ),
+                  const Divider(height: 32),
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      const Text('Sync status'),
+                      if (isConflicted)
+                        const _ConflictBadge()
+                      else
+                        ui.StatusChip(state: record.syncState),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Editing submitted entries is not available in this demo.',
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.edit_outlined),
+            label: const Text('Edit submission'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailLine extends StatelessWidget {
+  const _DetailLine(this.label, this.value);
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Row(
+      children: [
+        Expanded(child: Text(label)),
+        Expanded(child: Text(value)),
+      ],
+    ),
+  );
 }

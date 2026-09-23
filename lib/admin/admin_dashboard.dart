@@ -6,19 +6,23 @@ import 'package:flutter/services.dart';
 import '../data/visit_repository.dart';
 import '../domain/authenticated_user.dart';
 import '../domain/measurement.dart';
+import '../domain/participant_id.dart';
 import '../domain/participant_profile.dart';
 import '../domain/study_configuration.dart';
 import '../domain/visit_record.dart';
+import 'local_api_visit_repository.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({
     required this.repository,
     required this.admin,
+    this.conflictRepository,
     super.key,
   });
 
   final VisitRepository repository;
   final AuthenticatedUser admin;
+  final ServerConflictRepository? conflictRepository;
 
   @override
   State<AdminDashboard> createState() => _AdminDashboardState();
@@ -28,16 +32,20 @@ class _AdminDashboardState extends State<AdminDashboard> {
   List<VisitRecord>? _records;
   String? _recordsSignature;
   Object? _initialLoadError;
+  Object? _connectionError;
+  DateTime? _lastSuccessfulLoad;
   bool _isRefreshing = false;
   Timer? _poller;
   String _query = '';
   _RecordFilter _filter = _RecordFilter.all;
 
+  List<Map<String, dynamic>> _serverConflicts = const [];
+
   @override
   void initState() {
     super.initState();
     unawaited(_refresh());
-    _poller = Timer.periodic(const Duration(seconds: 2), (_) {
+    _poller = Timer.periodic(const Duration(seconds: 15), (_) {
       if (mounted) unawaited(_refresh());
     });
   }
@@ -45,26 +53,118 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Future<List<VisitRecord>> _loadRecords() =>
       widget.repository.listVisibleTo(widget.admin);
 
+  ServerConflictRepository? get _conflictRepo {
+    if (widget.conflictRepository != null) return widget.conflictRepository;
+    if (widget.repository is ServerConflictRepository) {
+      return widget.repository as ServerConflictRepository;
+    }
+    return null;
+  }
+
+  Future<List<Map<String, dynamic>>> _loadServerConflicts() async {
+    final repo = _conflictRepo;
+    if (repo != null) {
+      try {
+        return await repo.listConflicts();
+      } catch (_) {
+        return const [];
+      }
+    }
+    try {
+      final dynamic dynamicRepo = widget.repository;
+      final result = await dynamicRepo.listConflicts();
+      if (result is List) {
+        return result
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList();
+      }
+    } catch (_) {}
+    return const [];
+  }
+
   Future<void> _refresh() async {
     if (_isRefreshing) return;
     _isRefreshing = true;
     try {
       final records = await _loadRecords();
+      final conflicts = await _loadServerConflicts();
       if (!mounted) return;
       final signature = _signatureFor(records);
-      if (_recordsSignature != signature || _initialLoadError != null) {
+      _lastSuccessfulLoad = DateTime.now();
+      if (_recordsSignature != signature ||
+          _initialLoadError != null ||
+          _connectionError != null ||
+          _serverConflicts.length != conflicts.length ||
+          _serverConflicts.toString() != conflicts.toString()) {
         setState(() {
           _records = records;
           _recordsSignature = signature;
+          _serverConflicts = conflicts;
           _initialLoadError = null;
+          _connectionError = null;
         });
       }
     } catch (error) {
-      if (mounted && _records == null) {
-        setState(() => _initialLoadError = error);
+      if (mounted) {
+        if (_records == null) {
+          setState(() => _initialLoadError = error);
+        } else if (_connectionError == null) {
+          setState(() => _connectionError = error);
+        }
       }
     } finally {
       _isRefreshing = false;
+    }
+  }
+
+  Future<void> _reviewConflict(String conflictId, {String? notes}) async {
+    final repo = _conflictRepo;
+    try {
+      if (repo != null) {
+        await repo.reviewConflict(conflictId, notes: notes);
+      } else {
+        final dynamic dynamicRepo = widget.repository;
+        await dynamicRepo.reviewConflict(conflictId, notes: notes);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Conflict marked as reviewed.')),
+        );
+        await _refresh();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to review conflict: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _resolveConflict(
+    String conflictId,
+    Map<String, dynamic> resolution,
+  ) async {
+    final repo = _conflictRepo;
+    try {
+      if (repo != null) {
+        await repo.resolveConflict(conflictId, resolution);
+      } else {
+        final dynamic dynamicRepo = widget.repository;
+        await dynamicRepo.resolveConflict(conflictId, resolution);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Conflict resolved successfully.')),
+        );
+        await _refresh();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to resolve conflict: $e')),
+        );
+      }
     }
   }
 
@@ -95,14 +195,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   )
           : _DashboardContent(
               records: records,
+              serverConflicts: _serverConflicts,
+              connectionError: _connectionError,
+              lastSuccessfulLoad: _lastSuccessfulLoad,
               query: _query,
               filter: _filter,
               onQueryChanged: (value) => setState(() => _query = value.trim()),
               onFilterChanged: (value) => setState(() => _filter = value),
               onRefresh: _refresh,
+              onReviewConflict: _reviewConflict,
+              onResolveConflict: _resolveConflict,
               onArchivePolicy: () => _showArchivePolicy(context),
-              onRecordSelected: (record) => _showRecord(context, record),
-              onExport: () => _copyCsv(context, records),
+              onRecordSelected: (record) => _showRecord(
+                context,
+                record,
+                readOnly: _connectionError != null,
+              ),
+              onExport: _connectionError == null
+                  ? () => _copyCsv(context, records)
+                  : null,
             ),
     );
   }
@@ -128,12 +239,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  void _showRecord(BuildContext context, VisitRecord record) {
+  void _showRecord(
+    BuildContext context,
+    VisitRecord record, {
+    required bool readOnly,
+  }) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) => _RecordDetails(
         record: record,
+        readOnly: readOnly,
         onEdit: () {
           Navigator.of(sheetContext).pop();
           _editRecord(context, record);
@@ -241,32 +357,31 @@ class _AdminDashboardState extends State<AdminDashboard> {
       'sync_state',
       'updated_at',
     ];
-    final questionnaireHeaders = records
-        .expand(
-          (record) =>
-              record.questionnaire?.toCsvRow().keys ?? const <String>[],
-        )
-        .toSet()
-        .toList()
-      ..sort();
+    final questionnaireHeaders =
+        records
+            .expand(
+              (record) =>
+                  record.questionnaire?.toCsvRow().keys ?? const <String>[],
+            )
+            .toSet()
+            .toList()
+          ..sort();
     final headers = [...baseHeaders, ...questionnaireHeaders];
     final csv = <String>[
       headers.join(','),
-      ...records.map(
-        (record) {
-          final row = <String, String>{
-            'visit_id': record.id,
-            'study_id': record.participant.studyId,
-            'collector_id': record.collectorId,
-            'visit_number': '${record.visitNumber}',
-            'visit_status': record.status.name,
-            'sync_state': record.syncState.name,
-            'updated_at': record.updatedAt.toUtc().toIso8601String(),
-            ...?record.questionnaire?.toCsvRow(),
-          };
-          return headers.map((header) => quote(row[header] ?? '')).join(',');
-        },
-      ),
+      ...records.map((record) {
+        final row = <String, String>{
+          'visit_id': record.id,
+          'study_id': record.participant.studyId,
+          'collector_id': record.collectorId,
+          'visit_number': '${record.visitNumber}',
+          'visit_status': record.status.name,
+          'sync_state': record.syncState.name,
+          'updated_at': record.updatedAt.toUtc().toIso8601String(),
+          ...?record.questionnaire?.toCsvRow(),
+        };
+        return headers.map((header) => quote(row[header] ?? '')).join(',');
+      }),
     ].join('\n');
     await Clipboard.setData(ClipboardData(text: csv));
     if (!context.mounted) return;
@@ -279,25 +394,36 @@ class _AdminDashboardState extends State<AdminDashboard> {
 class _DashboardContent extends StatelessWidget {
   const _DashboardContent({
     required this.records,
+    required this.serverConflicts,
+    required this.connectionError,
+    required this.lastSuccessfulLoad,
     required this.query,
     required this.filter,
     required this.onQueryChanged,
     required this.onFilterChanged,
     required this.onRefresh,
+    required this.onReviewConflict,
+    required this.onResolveConflict,
     required this.onArchivePolicy,
     required this.onRecordSelected,
     required this.onExport,
   });
 
   final List<VisitRecord> records;
+  final List<Map<String, dynamic>> serverConflicts;
+  final Object? connectionError;
+  final DateTime? lastSuccessfulLoad;
   final String query;
   final _RecordFilter filter;
   final ValueChanged<String> onQueryChanged;
   final ValueChanged<_RecordFilter> onFilterChanged;
   final VoidCallback onRefresh;
+  final ValueChanged<String>? onReviewConflict;
+  final void Function(String id, Map<String, dynamic> resolution)?
+  onResolveConflict;
   final VoidCallback onArchivePolicy;
   final ValueChanged<VisitRecord> onRecordSelected;
-  final VoidCallback onExport;
+  final VoidCallback? onExport;
 
   @override
   Widget build(BuildContext context) {
@@ -306,6 +432,7 @@ class _DashboardContent extends StatelessWidget {
         record.id,
         record.participant.studyId,
         record.participant.name,
+        record.participant.indianPhone,
         record.collectorId,
       ].join(' ').toLowerCase();
       return haystack.contains(query.toLowerCase()) && filter.matches(record);
@@ -326,6 +453,24 @@ class _DashboardContent extends StatelessWidget {
             sliver: SliverList.list(
               children: [
                 _TopBar(onRefresh: onRefresh, onArchivePolicy: onArchivePolicy),
+                if (connectionError != null) ...[
+                  const SizedBox(height: 18),
+                  _OfflineSnapshotNotice(
+                    error: connectionError!,
+                    lastSuccessfulLoad: lastSuccessfulLoad,
+                    onRetry: onRefresh,
+                  ),
+                ],
+                if (stats.conflicts > 0 || serverConflicts.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  _ConflictNotice(
+                    conflictCount: serverConflicts.isNotEmpty
+                        ? serverConflicts.length
+                        : stats.conflicts,
+                    onFilterConflicts: () =>
+                        onFilterChanged(_RecordFilter.conflicts),
+                  ),
+                ],
                 const SizedBox(height: 36),
                 const Text(
                   'Study operations',
@@ -337,7 +482,7 @@ class _DashboardContent extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'A secure browser workspace for submitted and in-progress visits.',
+                  'A browser workspace for submitted and in-progress visits.',
                   style: TextStyle(color: Color(0xFF667085), fontSize: 16),
                 ),
                 const SizedBox(height: 28),
@@ -355,6 +500,13 @@ class _DashboardContent extends StatelessWidget {
                 ),
                 const SizedBox(height: 22),
                 _ArchiveNotice(onTap: onArchivePolicy),
+                const SizedBox(height: 28),
+                _ServerConflictInbox(
+                  conflicts: serverConflicts,
+                  onReview: onReviewConflict,
+                  onResolve: onResolveConflict,
+                  onRefresh: onRefresh,
+                ),
               ],
             ),
           ),
@@ -376,6 +528,102 @@ class _LogoMark extends StatelessWidget {
       borderRadius: BorderRadius.circular(11),
     ),
     child: const Icon(Icons.insights_rounded, color: Color(0xFF10224B)),
+  );
+}
+
+class _ConflictNotice extends StatelessWidget {
+  const _ConflictNotice({
+    required this.conflictCount,
+    required this.onFilterConflicts,
+  });
+
+  final int conflictCount;
+  final VoidCallback onFilterConflicts;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    color: const Color(0xFFFDE8E8),
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: Color(0xFFCC4B4B)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$conflictCount sync conflict${conflictCount == 1 ? '' : 's'} detected',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF9B1C1C),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'Record conflicts occurred during collector synchronization (e.g. mismatched participant ID or phone). Select a record to inspect and edit.',
+                  style: TextStyle(color: Color(0xFF771D1D), fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          TextButton(
+            onPressed: onFilterConflicts,
+            child: const Text('View conflicts'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _OfflineSnapshotNotice extends StatelessWidget {
+  const _OfflineSnapshotNotice({
+    required this.error,
+    required this.lastSuccessfulLoad,
+    required this.onRetry,
+  });
+
+  final Object error;
+  final DateTime? lastSuccessfulLoad;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    color: const Color(0xFFFFF4DE),
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          const Icon(Icons.wifi_off_rounded, color: Color(0xFF795500)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Could not refresh — showing last loaded records',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                Text(
+                  'Last connected ${lastSuccessfulLoad == null ? 'earlier' : _fullDate(lastSuccessfulLoad!)}. '
+                  'Records may have changed. Editing, archiving, and export are paused until the server reconnects.',
+                ),
+                Text(error.toString()),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          TextButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Retry'),
+          ),
+        ],
+      ),
+    ),
   );
 }
 
@@ -422,8 +670,10 @@ class _StatsGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      final columns = constraints.maxWidth >= 1100
-          ? 5
+      final columns = constraints.maxWidth >= 1200
+          ? 6
+          : constraints.maxWidth >= 800
+          ? 3
           : constraints.maxWidth >= 580
           ? 2
           : 1;
@@ -456,10 +706,17 @@ class _StatsGrid extends StatelessWidget {
           ),
           _MetricCard(
             width: width,
-            label: 'Drafts',
-            value: '${stats.drafts}',
-            icon: Icons.edit_note_outlined,
-            color: const Color(0xFF7254C7),
+            label: 'Sync conflicts',
+            value: '${stats.conflicts}',
+            icon: Icons.error_outline,
+            color: const Color(0xFFCC4B4B),
+          ),
+          _MetricCard(
+            width: width,
+            label: 'Reviewed',
+            value: '${stats.reviewed}',
+            icon: Icons.verified_outlined,
+            color: const Color(0xFF16866D),
           ),
           _MetricCard(
             width: width,
@@ -554,7 +811,7 @@ class _RecordsPanel extends StatelessWidget {
   final ValueChanged<String> onQueryChanged;
   final ValueChanged<_RecordFilter> onFilterChanged;
   final ValueChanged<VisitRecord> onRecordSelected;
-  final VoidCallback onExport;
+  final VoidCallback? onExport;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -597,7 +854,8 @@ class _RecordsPanel extends StatelessWidget {
                 onChanged: onQueryChanged,
                 decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.search),
-                  hintText: 'Study ID, participant, collector, or visit ID',
+                  hintText:
+                      'Study ID, participant, phone, collector, or visit ID',
                 ),
               );
               final status = DropdownButtonFormField<_RecordFilter>(
@@ -645,16 +903,18 @@ class _RecordsPanel extends StatelessWidget {
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
-                headingRowColor: WidgetStatePropertyAll(
-                  const Color(0xFFF7F9FC),
+                headingRowColor: const WidgetStatePropertyAll(
+                  Color(0xFFF7F9FC),
                 ),
                 horizontalMargin: 14,
-                columnSpacing: 34,
+                columnSpacing: 28,
                 columns: const [
                   DataColumn(label: Text('Participant')),
+                  DataColumn(label: Text('Phone')),
                   DataColumn(label: Text('Visit')),
                   DataColumn(label: Text('Collector')),
                   DataColumn(label: Text('Status')),
+                  DataColumn(label: Text('Review')),
                   DataColumn(label: Text('Last updated')),
                   DataColumn(label: Text('')),
                 ],
@@ -664,9 +924,11 @@ class _RecordsPanel extends StatelessWidget {
                         onSelectChanged: (_) => onRecordSelected(record),
                         cells: [
                           DataCell(_ParticipantCell(record: record)),
+                          DataCell(Text(record.participant.indianPhone)),
                           DataCell(Text('Visit ${record.visitNumber}')),
                           DataCell(Text(record.collectorId)),
                           DataCell(_StatusPill(record: record)),
+                          DataCell(_ReviewPill(record: record)),
                           DataCell(Text(_relativeTime(record.updatedAt))),
                           const DataCell(
                             Icon(Icons.chevron_right, color: Color(0xFF667085)),
@@ -718,9 +980,37 @@ class _StatusPill extends StatelessWidget {
         : switch (record.syncState) {
             SyncState.synced => ('Synced', const Color(0xFF16866D)),
             SyncState.pending => ('Pending sync', const Color(0xFFE08A24)),
-            SyncState.failed => ('Sync attention', const Color(0xFFCC4B4B)),
+            SyncState.failed => ('Sync conflict', const Color(0xFFCC4B4B)),
             SyncState.localOnly => ('Local draft', const Color(0xFF7254C7)),
           };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.11),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+}
+
+class _ReviewPill extends StatelessWidget {
+  const _ReviewPill({required this.record});
+  final VisitRecord record;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (record.reviewState) {
+      NeutralReviewState.reviewed => ('Reviewed', const Color(0xFF16866D)),
+      NeutralReviewState.pending => ('Pending review', const Color(0xFF667085)),
+    };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -1167,6 +1457,7 @@ class _RecordEditSheetState extends State<_RecordEditSheet> {
           confirmation: confirmation,
           stepTwoMeasurement: measurement,
           stepTwoPlaceholderNote: widget.record.stepTwoPlaceholderNote,
+          questionnaire: widget.record.questionnaire,
           archiveMetadata: widget.record.archiveMetadata,
           submittedAt: _status == VisitStatus.submitted
               ? widget.record.submittedAt ?? DateTime.now().toUtc()
@@ -1193,14 +1484,17 @@ class _EditorSectionTitle extends StatelessWidget {
 }
 
 ParticipantIdPolicy _policyForExistingId(String studyId) {
-  final match = RegExp(r'^(.*?)(\d+)$').firstMatch(studyId);
+  if (!isValidParticipantStudyId(studyId)) {
+    throw ArgumentError('The existing participant ID cannot be validated.');
+  }
+  final match = RegExp(r'^(.*?)(\d+)$').firstMatch(studyId.trim());
   if (match == null || match.group(1)!.isEmpty) {
     throw ArgumentError('The existing participant ID cannot be validated.');
   }
   final digits = match.group(2)!;
   final number = int.parse(digits);
   return ParticipantIdPolicy(
-    prefix: match.group(1)!,
+    prefix: match.group(1)!.toUpperCase(),
     firstNumber: number,
     lastNumber: number,
     padding: digits.length,
@@ -1210,10 +1504,12 @@ ParticipantIdPolicy _policyForExistingId(String studyId) {
 class _RecordDetails extends StatelessWidget {
   const _RecordDetails({
     required this.record,
+    required this.readOnly,
     required this.onEdit,
     required this.onArchiveToggle,
   });
   final VisitRecord record;
+  final bool readOnly;
   final VoidCallback onEdit;
   final VoidCallback onArchiveToggle;
   @override
@@ -1258,9 +1554,37 @@ class _RecordDetails extends StatelessWidget {
             style: const TextStyle(color: Color(0xFF667085)),
           ),
           const SizedBox(height: 20),
+          if (record.syncState == SyncState.failed) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFDE8E8),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFF8B4B4)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Color(0xFFCC4B4B)),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Sync conflict detected: this record was flagged during upload. Use "Edit record" to update details or resolve discrepancies.',
+                      style: TextStyle(color: Color(0xFF9B1C1C), fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           _DetailRow(label: 'Participant', value: record.participant.name),
+          _DetailRow(label: 'Study ID', value: record.participant.studyId),
           _DetailRow(label: 'Phone', value: record.participant.indianPhone),
           _DetailRow(label: 'Collector', value: record.collectorId),
+          _DetailRow(
+            label: 'Visit number',
+            value: 'Visit ${record.visitNumber}',
+          ),
           _DetailRow(label: 'Record ID', value: record.id),
           _DetailRow(
             label: 'Visit status',
@@ -1268,7 +1592,18 @@ class _RecordDetails extends StatelessWidget {
                 ? 'Submitted'
                 : 'Draft',
           ),
-          _DetailRow(label: 'Sync status', value: _syncLabel(record.syncState)),
+          _DetailRow(
+            label: 'Sync status',
+            value: record.syncState == SyncState.failed
+                ? 'Sync conflict / attention'
+                : _syncLabel(record.syncState),
+          ),
+          _DetailRow(
+            label: 'Review state',
+            value: record.reviewState == NeutralReviewState.reviewed
+                ? 'Reviewed'
+                : 'Pending review',
+          ),
           if (record.questionnaire case final questionnaire?) ...[
             const Divider(height: 28),
             const Text(
@@ -1276,17 +1611,27 @@ class _RecordDetails extends StatelessWidget {
               style: TextStyle(fontWeight: FontWeight.w800),
             ),
             _DetailRow(label: 'Study site', value: questionnaire.studySite),
-            _DetailRow(label: 'Age / sex', value: '${questionnaire.age} · ${questionnaire.sex}'),
-            _DetailRow(label: 'BMI', value: questionnaire.bmi.toStringAsFixed(1)),
+            _DetailRow(
+              label: 'Age / sex',
+              value: '${questionnaire.age} · ${questionnaire.sex}',
+            ),
+            _DetailRow(
+              label: 'BMI',
+              value: questionnaire.bmi.toStringAsFixed(1),
+            ),
             _DetailRow(
               label: 'Average BP',
-              value: '${questionnaire.averageSystolic.toStringAsFixed(0)} / ${questionnaire.averageDiastolic.toStringAsFixed(0)} mmHg',
+              value:
+                  '${questionnaire.averageSystolic.toStringAsFixed(0)} / ${questionnaire.averageDiastolic.toStringAsFixed(0)} mmHg',
             ),
             _DetailRow(
               label: 'Activity',
               value: '${questionnaire.weeklyActiveMinutes} min/week',
             ),
-            _DetailRow(label: 'Sleep', value: '${questionnaire.sleepHours} hours/night'),
+            _DetailRow(
+              label: 'Sleep',
+              value: '${questionnaire.sleepHours} hours/night',
+            ),
           ],
           if (record.stepTwoPlaceholderNote != null)
             _DetailRow(
@@ -1305,12 +1650,12 @@ class _RecordDetails extends StatelessWidget {
             runSpacing: 10,
             children: [
               FilledButton.icon(
-                onPressed: onEdit,
+                onPressed: readOnly ? null : onEdit,
                 icon: const Icon(Icons.edit_outlined),
                 label: const Text('Edit record'),
               ),
               OutlinedButton.icon(
-                onPressed: onArchiveToggle,
+                onPressed: readOnly ? null : onArchiveToggle,
                 icon: Icon(
                   record.isArchived
                       ? Icons.unarchive_outlined
@@ -1323,6 +1668,11 @@ class _RecordDetails extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+          if (readOnly)
+            const Text(
+              'This is the last loaded view. Reconnect to the home server before making changes.',
+              style: TextStyle(color: Color(0xFF795500), fontSize: 13),
+            ),
           const Text(
             'Archiving is reversible. This portal never provides a permanent delete action.',
             style: TextStyle(color: Color(0xFF667085), fontSize: 13),
@@ -1379,10 +1729,24 @@ class _RecordStats {
             record.syncState == SyncState.failed,
       )
       .length;
+  int get conflicts =>
+      records.where((record) => record.syncState == SyncState.failed).length;
+  int get reviewed => records
+      .where((record) => record.reviewState == NeutralReviewState.reviewed)
+      .length;
   int get archived => records.where((record) => record.isArchived).length;
 }
 
-enum _RecordFilter { all, submitted, drafts, needsSync, archived }
+enum _RecordFilter {
+  all,
+  submitted,
+  drafts,
+  needsSync,
+  conflicts,
+  pendingReview,
+  reviewed,
+  archived,
+}
 
 extension on _RecordFilter {
   String get label => switch (this) {
@@ -1390,6 +1754,9 @@ extension on _RecordFilter {
     _RecordFilter.submitted => 'Submitted',
     _RecordFilter.drafts => 'Drafts',
     _RecordFilter.needsSync => 'Needs sync',
+    _RecordFilter.conflicts => 'Sync conflicts',
+    _RecordFilter.pendingReview => 'Pending review',
+    _RecordFilter.reviewed => 'Reviewed',
     _RecordFilter.archived => 'Archived',
   };
   bool matches(VisitRecord record) => switch (this) {
@@ -1399,6 +1766,11 @@ extension on _RecordFilter {
     _RecordFilter.needsSync =>
       record.syncState == SyncState.pending ||
           record.syncState == SyncState.failed,
+    _RecordFilter.conflicts => record.syncState == SyncState.failed,
+    _RecordFilter.pendingReview =>
+      record.reviewState == NeutralReviewState.pending && !record.isArchived,
+    _RecordFilter.reviewed =>
+      record.reviewState == NeutralReviewState.reviewed && !record.isArchived,
     _RecordFilter.archived => record.isArchived,
   };
 }
@@ -1406,7 +1778,7 @@ extension on _RecordFilter {
 String _syncLabel(SyncState state) => switch (state) {
   SyncState.synced => 'Synced',
   SyncState.pending => 'Pending sync',
-  SyncState.failed => 'Sync needs attention',
+  SyncState.failed => 'Sync conflict / attention',
   SyncState.localOnly => 'Local draft',
 };
 
@@ -1425,4 +1797,584 @@ String _fullDate(DateTime value) {
   final time =
       '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   return '$date · $time';
+}
+
+class _ServerConflictInbox extends StatelessWidget {
+  const _ServerConflictInbox({
+    required this.conflicts,
+    required this.onReview,
+    required this.onResolve,
+    required this.onRefresh,
+  });
+
+  final List<Map<String, dynamic>> conflicts;
+  final ValueChanged<String>? onReview;
+  final void Function(String id, Map<String, dynamic> resolution)? onResolve;
+  final VoidCallback onRefresh;
+
+  static String _field(Map<String, dynamic>? record, String key) {
+    if (record == null) return '—';
+    if (key == 'studyId') {
+      final p = record['participant'];
+      if (p is Map && p['studyId'] != null) return '${p['studyId']}';
+      return '${record['studyId'] ?? record['participantId'] ?? '—'}';
+    }
+    if (key == 'name') {
+      final p = record['participant'];
+      if (p is Map && p['name'] != null) return '${p['name']}';
+      return '${record['name'] ?? record['participantName'] ?? '—'}';
+    }
+    if (key == 'phone') {
+      final p = record['participant'];
+      if (p is Map && (p['indianPhone'] != null || p['phone'] != null)) {
+        return '${p['indianPhone'] ?? p['phone']}';
+      }
+      return '${record['indianPhone'] ?? record['phone'] ?? '—'}';
+    }
+    if (key == 'visitNumber') {
+      return '${record['visitNumber'] ?? '—'}';
+    }
+    if (key == 'collector') {
+      return '${record['collectorId'] ?? record['collector'] ?? '—'}';
+    }
+    return '${record[key] ?? '—'}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              runSpacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFCC4B4B).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.sync_problem_outlined,
+                        color: Color(0xFFCC4B4B),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Text(
+                              'Server Conflict Inbox',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            if (conflicts.isNotEmpty) ...[
+                              const SizedBox(width: 10),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFDE8E8),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  '${conflicts.length} active',
+                                  style: const TextStyle(
+                                    color: Color(0xFF9B1C1C),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        const Text(
+                          'Synchronization conflicts reported by the server requiring administrator attention.',
+                          style: TextStyle(color: Color(0xFF667085)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                IconButton(
+                  tooltip: 'Refresh conflict inbox',
+                  onPressed: onRefresh,
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            if (conflicts.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(28),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: const Column(
+                  children: [
+                    Icon(
+                      Icons.check_circle_outline,
+                      size: 38,
+                      color: Color(0xFF16866D),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      'No server conflicts detected',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'All uploads and synchronized records match server state cleanly.',
+                      style: TextStyle(color: Color(0xFF667085), fontSize: 13),
+                    ),
+                  ],
+                ),
+              )
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: conflicts.length,
+                separatorBuilder: (context, index) =>
+                    const SizedBox(height: 16),
+                itemBuilder: (context, index) {
+                  final conflict = conflicts[index];
+                  final conflictId = '${conflict['id'] ?? 'conflict-$index'}';
+                  final status = '${conflict['status'] ?? 'pending'}';
+                  final reason =
+                      '${conflict['reason'] ?? conflict['conflictType'] ?? 'Sync collision'}';
+                  final rejected =
+                      (conflict['rejectedRecord'] ??
+                              conflict['rejected'] ??
+                              conflict['incomingRecord'] ??
+                              conflict['incoming'])
+                          as Map<String, dynamic>? ??
+                      const {};
+                  final conflicting =
+                      (conflict['conflictingRecord'] ??
+                              conflict['conflicting'] ??
+                              conflict['existingRecord'] ??
+                              conflict['existing'])
+                          as Map<String, dynamic>? ??
+                      const {};
+
+                  return Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      borderRadius: BorderRadius.circular(14),
+                      color: Colors.white,
+                    ),
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Conflict #$conflictId',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: status == 'reviewed'
+                                    ? const Color(0xFFDEF7EC)
+                                    : const Color(0xFFFEF08A),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                status == 'reviewed'
+                                    ? 'Reviewed'
+                                    : 'Pending review',
+                                style: TextStyle(
+                                  color: status == 'reviewed'
+                                      ? const Color(0xFF03543F)
+                                      : const Color(0xFF713F12),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              'Reason: $reason',
+                              style: const TextStyle(
+                                color: Color(0xFF667085),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final isNarrow = constraints.maxWidth < 650;
+                            final rejectedView = _ConflictRecordView(
+                              title: 'Rejected Record (Incoming)',
+                              color: const Color(0xFFFFF5F5),
+                              borderColor: const Color(0xFFF8B4B4),
+                              studyId: _field(rejected, 'studyId'),
+                              name: _field(rejected, 'name'),
+                              phone: _field(rejected, 'phone'),
+                              visitNumber: _field(rejected, 'visitNumber'),
+                              collector: _field(rejected, 'collector'),
+                            );
+                            final conflictingView = _ConflictRecordView(
+                              title: 'Conflicting Record (Server)',
+                              color: const Color(0xFFF0F5FF),
+                              borderColor: const Color(0xFFA4CAFE),
+                              studyId: _field(conflicting, 'studyId'),
+                              name: _field(conflicting, 'name'),
+                              phone: _field(conflicting, 'phone'),
+                              visitNumber: _field(conflicting, 'visitNumber'),
+                              collector: _field(conflicting, 'collector'),
+                            );
+
+                            if (isNarrow) {
+                              return Column(
+                                children: [
+                                  rejectedView,
+                                  const SizedBox(height: 12),
+                                  conflictingView,
+                                ],
+                              );
+                            }
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(child: rejectedView),
+                                const SizedBox(width: 14),
+                                Expanded(child: conflictingView),
+                              ],
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: onReview == null
+                                  ? null
+                                  : () => onReview!(conflictId),
+                              icon: const Icon(Icons.check, size: 18),
+                              label: const Text('Mark as Reviewed'),
+                            ),
+                            const SizedBox(width: 10),
+                            FilledButton.icon(
+                              onPressed: onResolve == null
+                                  ? null
+                                  : () async {
+                                      final res =
+                                          await showDialog<
+                                            Map<String, dynamic>
+                                          >(
+                                            context: context,
+                                            builder: (ctx) => _ResolveConflictDialog(
+                                              conflictId: conflictId,
+                                              recordIdCollision:
+                                                  conflict['conflictType'] ==
+                                                      'idempotency_collision' &&
+                                                  rejected['id'] ==
+                                                      conflicting['id'],
+                                              initialStudyId:
+                                                  _field(rejected, 'studyId') !=
+                                                      '—'
+                                                  ? _field(rejected, 'studyId')
+                                                  : _field(
+                                                      conflicting,
+                                                      'studyId',
+                                                    ),
+                                              initialVisitNumber:
+                                                  _field(
+                                                        rejected,
+                                                        'visitNumber',
+                                                      ) !=
+                                                      '—'
+                                                  ? _field(
+                                                      rejected,
+                                                      'visitNumber',
+                                                    )
+                                                  : _field(
+                                                      conflicting,
+                                                      'visitNumber',
+                                                    ),
+                                            ),
+                                          );
+                                      if (res != null) {
+                                        onResolve!(conflictId, res);
+                                      }
+                                    },
+                              icon: const Icon(
+                                Icons.build_circle_outlined,
+                                size: 18,
+                              ),
+                              label: const Text('Resolve Conflict'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ConflictRecordView extends StatelessWidget {
+  const _ConflictRecordView({
+    required this.title,
+    required this.color,
+    required this.borderColor,
+    required this.studyId,
+    required this.name,
+    required this.phone,
+    required this.visitNumber,
+    required this.collector,
+  });
+
+  final String title;
+  final Color color;
+  final Color borderColor;
+  final String studyId;
+  final String name;
+  final String phone;
+  final String visitNumber;
+  final String collector;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color,
+        border: Border.all(color: borderColor),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          ),
+          const SizedBox(height: 10),
+          _ConflictDetailRow(label: 'Study ID', value: studyId),
+          _ConflictDetailRow(label: 'Participant Name', value: name),
+          _ConflictDetailRow(label: 'Mobile Phone', value: phone),
+          _ConflictDetailRow(label: 'Visit Number', value: visitNumber),
+          _ConflictDetailRow(label: 'Collector', value: collector),
+        ],
+      ),
+    );
+  }
+}
+
+class _ConflictDetailRow extends StatelessWidget {
+  const _ConflictDetailRow({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 2.5),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 120,
+          child: Text(
+            '$label:',
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF475467),
+              fontSize: 12,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _ResolveConflictDialog extends StatefulWidget {
+  const _ResolveConflictDialog({
+    required this.conflictId,
+    required this.recordIdCollision,
+    required this.initialStudyId,
+    required this.initialVisitNumber,
+  });
+
+  final String conflictId;
+  final bool recordIdCollision;
+  final String initialStudyId;
+  final String initialVisitNumber;
+
+  @override
+  State<_ResolveConflictDialog> createState() => _ResolveConflictDialogState();
+}
+
+class _ResolveConflictDialogState extends State<_ResolveConflictDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _studyId;
+  late final TextEditingController _recordId;
+  late final TextEditingController _visitNumber;
+  late final TextEditingController _notes;
+
+  @override
+  void initState() {
+    super.initState();
+    _studyId = TextEditingController(
+      text: widget.initialStudyId == '—' ? '' : widget.initialStudyId,
+    );
+    _recordId = TextEditingController();
+    _visitNumber = TextEditingController(
+      text: widget.initialVisitNumber == '—' ? '1' : widget.initialVisitNumber,
+    );
+    _notes = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _studyId.dispose();
+    _recordId.dispose();
+    _visitNumber.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Resolve Conflict #${widget.conflictId}'),
+      content: SizedBox(
+        width: 440,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Accept the record as corrected with updated Study ID or visit number:',
+                  style: TextStyle(color: Color(0xFF667085), fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                if (widget.recordIdCollision) ...[
+                  const Text(
+                    'This upload reused an accepted visit ID. Enter a new, unique record ID; the accepted visit will not be replaced.',
+                    style: TextStyle(color: Color(0xFF667085), fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _recordId,
+                    decoration: const InputDecoration(
+                      labelText: 'New record ID',
+                    ),
+                    validator: (value) {
+                      final id = (value ?? '').trim();
+                      return id.isNotEmpty && !id.contains('/')
+                          ? null
+                          : 'Enter a new record ID without a slash.';
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                TextFormField(
+                  controller: _studyId,
+                  decoration: const InputDecoration(
+                    labelText: 'Study ID',
+                    hintText: 'e.g. C01-000001 or P001',
+                  ),
+                  validator: (value) =>
+                      isValidParticipantStudyId(value) ? null : 'Enter a valid participant Study ID (e.g. C01-000001 or P001).',
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _visitNumber,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Visit number'),
+                  validator: (value) {
+                    final n = int.tryParse((value ?? '').trim());
+                    return (n != null && n > 0)
+                        ? null
+                        : 'Enter a visit number greater than zero.';
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _notes,
+                  minLines: 2,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Resolution notes (optional)',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (!_formKey.currentState!.validate()) return;
+            Navigator.pop(context, {
+              'action': 'accept_corrected',
+              if (widget.recordIdCollision) 'recordId': _recordId.text.trim(),
+              'studyId': _studyId.text.trim(),
+              'visitNumber': int.parse(_visitNumber.text.trim()),
+              if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
+            });
+          },
+          child: const Text('Resolve Conflict'),
+        ),
+      ],
+    );
+  }
 }

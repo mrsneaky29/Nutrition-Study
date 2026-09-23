@@ -43,6 +43,10 @@ class _SyncGateway implements LocalRecordSyncGateway {
   @override
   Future<LocalRecordSyncResult> sendRecord(Map<String, Object?> value) async =>
       LocalRecordSyncResult.synced;
+
+  @override
+  Future<ParticipantLookupResult> lookupParticipant(String phone) async =>
+      const ParticipantLookupResult.notFound();
 }
 
 class _MemoryRecordStore implements LocalRecordStore {

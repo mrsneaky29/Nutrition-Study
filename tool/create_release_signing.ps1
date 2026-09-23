@@ -16,6 +16,9 @@ if (-not (Test-Path -LiteralPath $KeytoolPath)) {
 if ((Test-Path -LiteralPath $keystore) -or (Test-Path -LiteralPath $keyProperties)) {
   throw "Release signing files already exist. Refusing to replace the key required for future updates."
 }
+if ((Test-Path -LiteralPath $backupKeystore) -or (Test-Path -LiteralPath $backupProperties)) {
+  throw "A signing backup already exists. Refusing to replace or mix it with a new key."
+}
 
 $bytes = New-Object byte[] 32
 [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
@@ -31,7 +34,10 @@ $password = [Convert]::ToBase64String($bytes).Replace("+", "A").Replace("/", "B"
   -validity 10000 `
   -dname "CN=Nutrition Study, OU=Research, O=Nutrition Study, L=Hyderabad, ST=Telangana, C=IN"
 if ($LASTEXITCODE -ne 0) {
-  throw "Release key generation failed."
+  throw "Release key generation failed. Inspect the target path before retrying; this script never replaces a partial key."
+}
+if (-not (Test-Path -LiteralPath $keystore) -or (Get-Item -LiteralPath $keystore).Length -eq 0) {
+  throw "keytool did not create a nonempty keystore."
 }
 
 $properties = @(
@@ -40,7 +46,11 @@ $properties = @(
   "keyAlias=study-release"
   "storeFile=study-release.jks"
 )
-Set-Content -LiteralPath $keyProperties -Value $properties -Encoding utf8
+[System.IO.File]::WriteAllLines(
+  $keyProperties,
+  $properties,
+  [System.Text.UTF8Encoding]::new($false)
+)
 
 New-Item -ItemType Directory -Force -Path $backupDirectory | Out-Null
 Copy-Item -LiteralPath $keystore -Destination $backupKeystore
@@ -48,4 +58,4 @@ Copy-Item -LiteralPath $keyProperties -Destination $backupProperties
 
 Write-Host "Release signing key created."
 Write-Host "Private backup: $backupDirectory"
-Write-Host "Keep this directory private and copy it to a second secure location."
+Write-Host "This backup is still on the same computer. Copy both files to a separate secure location before distributing an APK."

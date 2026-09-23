@@ -7,18 +7,30 @@ import '../data/visit_repository.dart';
 import '../domain/authenticated_user.dart';
 import '../domain/measurement.dart';
 import '../domain/ncd_questionnaire.dart';
+import '../domain/participant_id.dart';
 import '../domain/participant_profile.dart';
 import '../domain/study_configuration.dart';
 import '../domain/visit_record.dart';
+
+/// Contract for server conflict inbox management.
+abstract class ServerConflictRepository {
+  Future<List<Map<String, dynamic>>> listConflicts({String? status});
+  Future<Map<String, dynamic>?> getConflict(String id);
+  Future<void> reviewConflict(String id, {String? notes});
+  Future<void> resolveConflict(String id, Map<String, dynamic> resolution);
+}
 
 /// Visit repository backed by the local administration REST service.
 ///
 /// It deliberately implements only administrator operations. The collector
 /// application does not create or use this repository.
-class LocalApiVisitRepository implements VisitRepository {
-  LocalApiVisitRepository({String? baseUrl, http.Client? client})
-    : _baseUri = Uri.parse(baseUrl ?? defaultBaseUrl),
-      _client = client ?? http.Client();
+class LocalApiVisitRepository implements VisitRepository, ServerConflictRepository {
+  LocalApiVisitRepository({
+    required this.apiKey,
+    String? baseUrl,
+    http.Client? client,
+  }) : _baseUri = Uri.parse(baseUrl ?? defaultBaseUrl),
+       _client = client ?? http.Client();
 
   static const defaultBaseUrl = String.fromEnvironment(
     'LOCAL_API_BASE_URL',
@@ -27,6 +39,7 @@ class LocalApiVisitRepository implements VisitRepository {
 
   final Uri _baseUri;
   final http.Client _client;
+  final String apiKey;
 
   Uri _uri(String path) => _baseUri.resolve(path);
 
@@ -87,6 +100,64 @@ class LocalApiVisitRepository implements VisitRepository {
   }
 
   @override
+  Future<List<Map<String, dynamic>>> listConflicts({String? status}) async {
+    final query = (status != null && status.isNotEmpty)
+        ? '?status=${Uri.encodeQueryComponent(status)}'
+        : '';
+    final response = await _get('/conflicts$query');
+    final decoded = _decode(response);
+    final list = decoded is List
+        ? decoded
+        : _map(decoded)['conflicts'] ?? _map(decoded)['data'] ?? const [];
+    if (list is! List) {
+      throw const LocalApiException(
+        'The local service returned an invalid conflicts response.',
+      );
+    }
+    return list.map((item) => Map<String, dynamic>.from(_map(item))).toList();
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getConflict(String id) async {
+    final response = await _checked(
+      _client
+          .get(
+            _uri('/conflicts/${Uri.encodeComponent(id)}'),
+            headers: _jsonHeaders,
+          )
+          .timeout(const Duration(seconds: 8)),
+      allowNotFound: true,
+    );
+    if (response.statusCode == 404) return null;
+    final decoded = _decode(response);
+    final data = decoded is Map && decoded['conflict'] != null
+        ? decoded['conflict']
+        : decoded;
+    return Map<String, dynamic>.from(_map(data));
+  }
+
+  @override
+  Future<void> reviewConflict(String id, {String? notes}) async {
+    await _post(
+      '/conflicts/${Uri.encodeComponent(id)}/review',
+      {
+        'notes': ?notes,
+      },
+    );
+  }
+
+  @override
+  Future<void> resolveConflict(
+    String id,
+    Map<String, dynamic> resolution,
+  ) async {
+    await _post(
+      '/conflicts/${Uri.encodeComponent(id)}/resolve',
+      resolution,
+    );
+  }
+
+  @override
   Future<VisitRecord> createDraft({
     required AuthenticatedUser actor,
     required ParticipantProfile participant,
@@ -134,9 +205,15 @@ class LocalApiVisitRepository implements VisitRepository {
             .timeout(const Duration(seconds: 8)),
       );
 
-  Future<http.Response> _checked(Future<http.Response> request) async {
+  Future<http.Response> _checked(
+    Future<http.Response> request, {
+    bool allowNotFound = false,
+  }) async {
     try {
       final response = await request;
+      if (allowNotFound && response.statusCode == 404) {
+        return response;
+      }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw LocalApiException(_errorMessage(response));
       }
@@ -152,10 +229,9 @@ class LocalApiVisitRepository implements VisitRepository {
     }
   }
 
-  static const _apiKey = String.fromEnvironment('LOCAL_API_KEY');
-  static const _jsonHeaders = {
+  Map<String, String> get _jsonHeaders => {
     'content-type': 'application/json',
-    'x-local-sync-key': _apiKey,
+    'x-local-sync-key': apiKey,
   };
 
   static dynamic _decode(http.Response response) {
@@ -218,11 +294,15 @@ class LocalApiVisitRepository implements VisitRepository {
       createdAt: _date(json['createdAt']),
       updatedAt: _date(json['updatedAt']),
       status: _enumByName(VisitStatus.values, _string(json, 'status')),
-      syncState: _enumByName(SyncState.values, _string(json, 'syncState')),
-      reviewState: _enumByName(
-        NeutralReviewState.values,
-        _string(json, 'reviewState'),
-      ),
+      syncState: json['syncState'] == null
+          ? SyncState.synced
+          : _enumByName(SyncState.values, _string(json, 'syncState')),
+      reviewState: json['reviewState'] == null
+          ? NeutralReviewState.pending
+          : _enumByName(
+              NeutralReviewState.values,
+              _string(json, 'reviewState'),
+            ),
       revision: _integer(json, 'revision'),
       confirmation: confirmationJson == null
           ? null
@@ -312,7 +392,10 @@ class LocalApiVisitRepository implements VisitRepository {
 
   static String? _nullableString(Object? value) {
     if (value == null) return null;
-    if (value is String && value.isNotEmpty) return value;
+    if (value is String) {
+      final trimmed = value.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
     throw const LocalApiException(
       'The local service supplied an invalid Step 2 placeholder note.',
     );
@@ -364,7 +447,12 @@ class LocalApiVisitRepository implements VisitRepository {
   }
 
   static ParticipantIdPolicy _policyFor(String studyId) {
-    final match = RegExp(r'^(.*?)(\d+)$').firstMatch(studyId);
+    if (!isValidParticipantStudyId(studyId)) {
+      throw const LocalApiException(
+        'The local service supplied an invalid participant ID.',
+      );
+    }
+    final match = RegExp(r'^(.*?)(\d+)$').firstMatch(studyId.trim());
     if (match == null || match.group(1)!.isEmpty) {
       throw const LocalApiException(
         'The local service supplied an invalid participant ID.',
@@ -373,7 +461,7 @@ class LocalApiVisitRepository implements VisitRepository {
     final digits = match.group(2)!;
     final number = int.parse(digits);
     return ParticipantIdPolicy(
-      prefix: match.group(1)!,
+      prefix: match.group(1)!.toUpperCase(),
       firstNumber: number,
       lastNumber: number,
       padding: digits.length,
