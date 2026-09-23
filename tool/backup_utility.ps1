@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('Backup', 'Restore', 'Verify', 'SelfTest')]
+  [ValidateSet('Backup', 'Restore', 'Recover', 'Verify', 'SelfTest')]
   [string]$Action = 'Backup',
 
   [string]$Destination = '',
@@ -30,6 +30,9 @@ switch ($Action) {
       Write-Host "  powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action Backup -Destination 'E:\StudyBackups' -Label 'evening_sync'"
       exit 1
     }
+
+    & (Join-Path $PSScriptRoot 'validate_backup_destination.ps1') -Destination $Destination
+    if ($LASTEXITCODE -ne 0) { exit 1 }
 
     $dartArgs = @('run', 'tool/backup_utility.dart', 'backup', "--destination=$Destination")
     if (-not [string]::IsNullOrWhiteSpace($Source)) {
@@ -70,6 +73,10 @@ switch ($Action) {
     if ($ConfirmOverwrite) {
       $dartArgs += '--confirm-overwrite'
     }
+  }
+
+  'Recover' {
+    $dartArgs = @('run', 'tool/backup_utility.dart', 'recover', "--target=$Target")
   }
 
   'SelfTest' {

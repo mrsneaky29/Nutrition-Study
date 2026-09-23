@@ -172,6 +172,8 @@ The automatic `.local_data/records.json.bak` snapshot is on the same disk and is
 **not** an off-device backup. Drive failure or system corruption will destroy both files.
 Use the official backup utility (`tool/backup_utility.ps1` or `tool/backup_utility.dart`) to create cryptographic SHA-256 verified off-device backups to an external USB drive or network share:
 
+Stop the sync server after all phones have synced and before backing up. On Windows, the command rejects destinations it cannot identify as removable, USB-attached, or remote network storage; a same-PC fixed-disk path is not accepted.
+
 - **Backup (post-sync window)**:
   ```powershell
   powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action Backup -Destination "E:\StudyBackups"
@@ -183,6 +185,10 @@ Use the official backup utility (`tool/backup_utility.ps1` or `tool/backup_utili
 - **Safe restore**:
   ```powershell
   powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action Restore -BackupPath "E:\StudyBackups\backup_20260923_180000" -ConfirmOverwrite
+  ```
+- **Recover after an interrupted restore, before restarting the server**:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action Recover -Target ".local_data"
   ```
 - **Automated self-test**:
   ```powershell

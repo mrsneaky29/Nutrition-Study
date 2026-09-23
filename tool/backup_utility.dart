@@ -23,6 +23,7 @@ const String conflictsFileName = 'conflicts.json';
 const String manifestFileName = 'manifest.json';
 const String sha256SumsFileName = 'SHA256SUMS';
 const String safetyBackupPrefix = 'pre_restore_safety_backup_';
+const String restoreMarkerFileName = 'restore_in_progress.json';
 
 // ============================================================================
 // Exceptions
@@ -59,22 +60,70 @@ class BackupOverwriteException extends BackupException {
 /// Self-contained FIPS 180-4 compliant SHA-256 implementation with streaming support.
 class Sha256 {
   static const List<int> _k = [
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
-    0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
-    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
-    0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
-    0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
-    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
-    0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
-    0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
-    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+    0x428a2f98,
+    0x71374491,
+    0xb5c0fbcf,
+    0xe9b5dba5,
+    0x3956c25b,
+    0x59f111f1,
+    0x923f82a4,
+    0xab1c5ed5,
+    0xd807aa98,
+    0x12835b01,
+    0x243185be,
+    0x550c7dc3,
+    0x72be5d74,
+    0x80deb1fe,
+    0x9bdc06a7,
+    0xc19bf174,
+    0xe49b69c1,
+    0xefbe4786,
+    0x0fc19dc6,
+    0x240ca1cc,
+    0x2de92c6f,
+    0x4a7484aa,
+    0x5cb0a9dc,
+    0x76f988da,
+    0x983e5152,
+    0xa831c66d,
+    0xb00327c8,
+    0xbf597fc7,
+    0xc6e00bf3,
+    0xd5a79147,
+    0x06ca6351,
+    0x14292967,
+    0x27b70a85,
+    0x2e1b2138,
+    0x4d2c6dfc,
+    0x53380d13,
+    0x650a7354,
+    0x766a0abb,
+    0x81c2c92e,
+    0x92722c85,
+    0xa2bfe8a1,
+    0xa81a664b,
+    0xc24b8b70,
+    0xc76c51a3,
+    0xd192e819,
+    0xd6990624,
+    0xf40e3585,
+    0x106aa070,
+    0x19a4c116,
+    0x1e376c08,
+    0x2748774c,
+    0x34b0bcb5,
+    0x391c0cb3,
+    0x4ed8aa4a,
+    0x5b9cca4f,
+    0x682e6ff3,
+    0x748f82ee,
+    0x78a5636f,
+    0x84c87814,
+    0x8cc70208,
+    0x90befffa,
+    0xa4506ceb,
+    0xbef9a3f7,
+    0xc67178f2,
   ];
 
   static int _rotr(int x, int n) => ((x >>> n) | (x << (32 - n))) & 0xFFFFFFFF;
@@ -108,7 +157,9 @@ class Sha256 {
     _totalBytes += remaining;
 
     if (_bufferLen > 0) {
-      final toCopy = (64 - _bufferLen < remaining) ? 64 - _bufferLen : remaining;
+      final toCopy = (64 - _bufferLen < remaining)
+          ? 64 - _bufferLen
+          : remaining;
       _buffer.setRange(_bufferLen, _bufferLen + toCopy, data, offset);
       _bufferLen += toCopy;
       offset += toCopy;
@@ -146,8 +197,10 @@ class Sha256 {
       _w[i] = bd.getUint32(i * 4, Endian.big);
     }
     for (int i = 16; i < 64; i++) {
-      final s0 = _rotr(_w[i - 15], 7) ^ _rotr(_w[i - 15], 18) ^ (_w[i - 15] >>> 3);
-      final s1 = _rotr(_w[i - 2], 17) ^ _rotr(_w[i - 2], 19) ^ (_w[i - 2] >>> 10);
+      final s0 =
+          _rotr(_w[i - 15], 7) ^ _rotr(_w[i - 15], 18) ^ (_w[i - 15] >>> 3);
+      final s1 =
+          _rotr(_w[i - 2], 17) ^ _rotr(_w[i - 2], 19) ^ (_w[i - 2] >>> 10);
       _w[i] = (_w[i - 16] + s0 + _w[i - 7] + s1) & 0xFFFFFFFF;
     }
 
@@ -408,7 +461,9 @@ class IntegrityVerifier {
 
     // Check required files presence in manifest
     if (!manifest.files.containsKey(recordsFileName)) {
-      errors.add('Manifest is missing required file entry for "$recordsFileName".');
+      errors.add(
+        'Manifest is missing required file entry for "$recordsFileName".',
+      );
       allFilesPassed = false;
     }
 
@@ -472,7 +527,9 @@ class IntegrityVerifier {
           for (int i = 0; i < decoded.length; i++) {
             final item = decoded[i];
             if (item is! Map) {
-              fileErrors.add('Item at index $i in $fileName is not a JSON object.');
+              fileErrors.add(
+                'Item at index $i in $fileName is not a JSON object.',
+              );
               allFilesPassed = false;
               break;
             }
@@ -535,7 +592,9 @@ class IntegrityVerifier {
             '${backupDir.path}${Platform.pathSeparator}$checkFileName',
           );
           if (!await f.exists()) {
-            errors.add('File listed in $sha256SumsFileName not found: $checkFileName');
+            errors.add(
+              'File listed in $sha256SumsFileName not found: $checkFileName',
+            );
             sha256SumsMatched = false;
           } else {
             final computed = await Sha256.hashFile(f);
@@ -653,7 +712,9 @@ class BackupEngine {
           await oldBackup.delete();
         }
       } catch (_) {
-        if (movedOld && !await destination.exists() && await oldBackup.exists()) {
+        if (movedOld &&
+            !await destination.exists() &&
+            await oldBackup.exists()) {
           await oldBackup.rename(destination.path);
         }
         rethrow;
@@ -669,6 +730,94 @@ class BackupEngine {
   static Future<void> atomicCopyFile(File source, File destination) async {
     final bytes = await source.readAsBytes();
     await atomicWriteFile(destination, bytes);
+  }
+
+  /// Roll back an interrupted restore from its pre-restore snapshot. The
+  /// marker remains in place if any verification or copy fails, so the server
+  /// will continue refusing to open a potentially mixed database.
+  Future<void> recoverInterruptedRestore(Directory targetDir) async {
+    final markerFile = File(
+      '${targetDir.path}${Platform.pathSeparator}$restoreMarkerFileName',
+    );
+    if (!await markerFile.exists()) {
+      throw BackupValidationException(
+        'No interrupted restore marker was found.',
+      );
+    }
+    final marker = jsonDecode(await markerFile.readAsString());
+    if (marker is! Map<String, dynamic> || marker['version'] != 1) {
+      throw BackupIntegrityException(
+        'Restore marker is invalid; manual recovery is required.',
+      );
+    }
+    final snapshotName = marker['snapshotFolder'];
+    final hadRecords = marker['hadRecords'];
+    final hadConflicts = marker['hadConflicts'];
+    if (hadRecords is! bool ||
+        hadConflicts is! bool ||
+        (snapshotName != null &&
+            (snapshotName is! String ||
+                !snapshotName.startsWith(safetyBackupPrefix) ||
+                snapshotName.contains(RegExp(r'[/\\]'))))) {
+      throw BackupIntegrityException('Restore marker contents are invalid.');
+    }
+    final snapshotDir = snapshotName == null
+        ? null
+        : Directory('${targetDir.path}${Platform.pathSeparator}$snapshotName');
+    Map<String, dynamic>? snapshotFiles;
+    if (hadRecords || hadConflicts) {
+      if (snapshotDir == null || !await snapshotDir.exists()) {
+        throw BackupIntegrityException(
+          'Pre-restore safety snapshot is missing.',
+        );
+      }
+      final manifestFile = File(
+        '${snapshotDir.path}${Platform.pathSeparator}safety_manifest.json',
+      );
+      final manifest = jsonDecode(await manifestFile.readAsString());
+      if (manifest is! Map<String, dynamic> ||
+          manifest['files'] is! Map<String, dynamic>) {
+        throw BackupIntegrityException('Safety snapshot manifest is invalid.');
+      }
+      snapshotFiles = manifest['files'] as Map<String, dynamic>;
+    }
+
+    // Validate every original before changing either live file.
+    final originals = <String, List<int>>{};
+    for (final entry in <String, bool>{
+      recordsFileName: hadRecords,
+      conflictsFileName: hadConflicts,
+    }.entries) {
+      if (!entry.value) continue;
+      final saved = File(
+        '${snapshotDir!.path}${Platform.pathSeparator}${entry.key}',
+      );
+      final details = snapshotFiles![entry.key];
+      if (details is! Map<String, dynamic> || !await saved.exists()) {
+        throw BackupIntegrityException(
+          'Safety snapshot is missing ${entry.key}.',
+        );
+      }
+      final bytes = await saved.readAsBytes();
+      if (bytes.length != details['sizeBytes'] ||
+          Sha256.hashBytes(bytes) != details['sha256']) {
+        throw BackupIntegrityException(
+          'Safety snapshot failed integrity verification for ${entry.key}.',
+        );
+      }
+      originals[entry.key] = bytes;
+    }
+
+    for (final name in <String>[recordsFileName, conflictsFileName]) {
+      final live = File('${targetDir.path}${Platform.pathSeparator}$name');
+      final original = originals[name];
+      if (original == null) {
+        if (await live.exists()) await live.delete();
+      } else {
+        await atomicWriteFile(live, original);
+      }
+    }
+    await markerFile.delete();
   }
 
   /// Creates a backup of records and conflicts from [source] into [destination].
@@ -719,7 +868,9 @@ class BackupEngine {
       try {
         final decoded = jsonDecode(await srcConflictsFile.readAsString());
         if (decoded is! List) {
-          throw const FormatException('conflicts.json must contain a JSON list.');
+          throw const FormatException(
+            'conflicts.json must contain a JSON list.',
+          );
         }
         conflictsList = decoded;
       } catch (e) {
@@ -877,6 +1028,14 @@ class BackupEngine {
     bool confirmOverwrite = false,
   }) async {
     final targetDir = target ?? Directory('.local_data');
+    final markerFile = File(
+      '${targetDir.path}${Platform.pathSeparator}$restoreMarkerFileName',
+    );
+    if (await markerFile.exists()) {
+      throw BackupValidationException(
+        'An interrupted restore must be recovered before another restore. Run the recover command with --target=${targetDir.path}.',
+      );
+    }
 
     // Safety Check 1: Verify backup integrity with hashes FIRST
     final verification = await verifier.verifyBackup(backupDir);
@@ -934,7 +1093,9 @@ class BackupEngine {
         targetRecordsFile,
         targetConflictsFile,
         File('${targetDir.path}${Platform.pathSeparator}$recordsFileName.bak'),
-        File('${targetDir.path}${Platform.pathSeparator}$conflictsFileName.bak'),
+        File(
+          '${targetDir.path}${Platform.pathSeparator}$conflictsFileName.bak',
+        ),
       ];
 
       final snapshotMap = <String, dynamic>{};
@@ -949,10 +1110,7 @@ class BackupEngine {
           final bytes = await f.readAsBytes();
           await atomicWriteFile(snapDest, bytes);
           final hash = Sha256.hashBytes(bytes);
-          snapshotMap[baseName] = {
-            'sizeBytes': bytes.length,
-            'sha256': hash,
-          };
+          snapshotMap[baseName] = {'sizeBytes': bytes.length, 'sha256': hash};
           snapshotSums.writeln('$hash  $baseName');
         }
       }
@@ -965,11 +1123,17 @@ class BackupEngine {
         'files': snapshotMap,
       };
       await atomicWriteFile(
-        File('${safetySnapshotDir.path}${Platform.pathSeparator}safety_manifest.json'),
-        utf8.encode('${const JsonEncoder.withIndent('  ').convert(snapshotManifest)}\n'),
+        File(
+          '${safetySnapshotDir.path}${Platform.pathSeparator}safety_manifest.json',
+        ),
+        utf8.encode(
+          '${const JsonEncoder.withIndent('  ').convert(snapshotManifest)}\n',
+        ),
       );
       await atomicWriteFile(
-        File('${safetySnapshotDir.path}${Platform.pathSeparator}$sha256SumsFileName'),
+        File(
+          '${safetySnapshotDir.path}${Platform.pathSeparator}$sha256SumsFileName',
+        ),
         utf8.encode(snapshotSums.toString()),
       );
     }
@@ -979,7 +1143,22 @@ class BackupEngine {
       await targetDir.create(recursive: true);
     }
 
-    // Restore files atomically
+    // The two files cannot be replaced as one filesystem transaction. The
+    // marker makes an interruption visible to the server and enables rollback.
+    await atomicWriteFile(
+      markerFile,
+      utf8.encode(
+        jsonEncode({
+          'version': 1,
+          'snapshotFolder': safetySnapshotDir?.uri.pathSegments
+              .where((segment) => segment.isNotEmpty)
+              .last,
+          'hadRecords': hasExistingRecords,
+          'hadConflicts': hasExistingConflicts,
+        }),
+      ),
+    );
+
     final srcRecordsFile = File(
       '${backupDir.path}${Platform.pathSeparator}$recordsFileName',
     );
@@ -987,30 +1166,46 @@ class BackupEngine {
       '${backupDir.path}${Platform.pathSeparator}$conflictsFileName',
     );
 
-    await atomicCopyFile(srcRecordsFile, targetRecordsFile);
-    await atomicCopyFile(srcConflictsFile, targetConflictsFile);
+    late final List<dynamic> restoredRecordsDecoded;
+    late final List<dynamic> restoredConflictsDecoded;
+    late final String restoredRecordsHash;
+    late final String restoredConflictsHash;
+    try {
+      await atomicCopyFile(srcRecordsFile, targetRecordsFile);
+      await atomicCopyFile(srcConflictsFile, targetConflictsFile);
 
-    // Read back and verify restored files against backup manifest
-    final restoredRecordsBytes = await targetRecordsFile.readAsBytes();
-    final restoredConflictsBytes = await targetConflictsFile.readAsBytes();
-
-    final restoredRecordsHash = Sha256.hashBytes(restoredRecordsBytes);
-    final restoredConflictsHash = Sha256.hashBytes(restoredConflictsBytes);
-
-    final expectedRecordsHash = verification.manifest!.files[recordsFileName]!.sha256;
-    final expectedConflictsHash = verification.manifest!.files[conflictsFileName]!.sha256;
-
-    if (restoredRecordsHash.toLowerCase() != expectedRecordsHash.toLowerCase() ||
-        restoredConflictsHash.toLowerCase() != expectedConflictsHash.toLowerCase()) {
-      throw BackupIntegrityException(
-        'Restored files do not match backup hashes!\n'
-        '  records.json: expected $expectedRecordsHash, got $restoredRecordsHash\n'
-        '  conflicts.json: expected $expectedConflictsHash, got $restoredConflictsHash',
-      );
+      final restoredRecordsBytes = await targetRecordsFile.readAsBytes();
+      final restoredConflictsBytes = await targetConflictsFile.readAsBytes();
+      restoredRecordsHash = Sha256.hashBytes(restoredRecordsBytes);
+      restoredConflictsHash = Sha256.hashBytes(restoredConflictsBytes);
+      final expectedRecordsHash =
+          verification.manifest!.files[recordsFileName]!.sha256;
+      final expectedConflictsHash =
+          verification.manifest!.files[conflictsFileName]!.sha256;
+      if (restoredRecordsHash.toLowerCase() !=
+              expectedRecordsHash.toLowerCase() ||
+          restoredConflictsHash.toLowerCase() !=
+              expectedConflictsHash.toLowerCase()) {
+        throw BackupIntegrityException(
+          'Restored files failed readback hash verification.',
+        );
+      }
+      restoredRecordsDecoded =
+          jsonDecode(utf8.decode(restoredRecordsBytes)) as List;
+      restoredConflictsDecoded =
+          jsonDecode(utf8.decode(restoredConflictsBytes)) as List;
+      await markerFile.delete();
+    } catch (error) {
+      try {
+        await recoverInterruptedRestore(targetDir);
+      } catch (recoveryError) {
+        throw BackupIntegrityException(
+          'Restore failed ($error), and automatic rollback failed ($recoveryError). '
+          'Do not start the server; recover from the safety snapshot.',
+        );
+      }
+      rethrow;
     }
-
-    final restoredRecordsDecoded = jsonDecode(utf8.decode(restoredRecordsBytes)) as List;
-    final restoredConflictsDecoded = jsonDecode(utf8.decode(restoredConflictsBytes)) as List;
 
     return RestoreResult(
       targetDirectory: targetDir,
@@ -1041,12 +1236,20 @@ class BackupEngine {
     log('   BACKUP UTILITY: SYNTHETIC DATA VERIFICATION SUITE');
     log('================================================================');
 
-    final scratchDir = Directory.systemTemp.createTempSync('backup_utility_test_');
+    final scratchDir = Directory.systemTemp.createTempSync(
+      'backup_utility_test_',
+    );
 
     try {
-      final srcDir = Directory('${scratchDir.path}${Platform.pathSeparator}source');
-      final destDir = Directory('${scratchDir.path}${Platform.pathSeparator}dest');
-      final targetDir = Directory('${scratchDir.path}${Platform.pathSeparator}target');
+      final srcDir = Directory(
+        '${scratchDir.path}${Platform.pathSeparator}source',
+      );
+      final destDir = Directory(
+        '${scratchDir.path}${Platform.pathSeparator}dest',
+      );
+      final targetDir = Directory(
+        '${scratchDir.path}${Platform.pathSeparator}target',
+      );
       await srcDir.create(recursive: true);
 
       // 1. Generate synthetic source records and conflict
@@ -1150,7 +1353,9 @@ class BackupEngine {
       log('   [PASS] Pristine backup passed integrity check.');
 
       // 4. Tamper detection test
-      log('4. Performing tamper detection test (modifying 1 byte in records.json)...');
+      log(
+        '4. Performing tamper detection test (modifying 1 byte in records.json)...',
+      );
       final tamperedDir = Directory(
         '${scratchDir.path}${Platform.pathSeparator}tampered_backup',
       );
@@ -1219,8 +1424,9 @@ class BackupEngine {
             .readAsString(),
       );
       final restoredConflicts = jsonDecode(
-        await File('${targetDir.path}${Platform.pathSeparator}$conflictsFileName')
-            .readAsString(),
+        await File(
+          '${targetDir.path}${Platform.pathSeparator}$conflictsFileName',
+        ).readAsString(),
       );
 
       if (jsonEncode(restoredRecords) != jsonEncode(syntheticRecords)) {
@@ -1333,13 +1539,10 @@ class BackupCli {
   final StringSink out;
   final StringSink err;
 
-  BackupCli({
-    BackupEngine? engine,
-    StringSink? outSink,
-    StringSink? errSink,
-  })  : engine = engine ?? const BackupEngine(),
-        out = outSink ?? stdout,
-        err = errSink ?? stderr;
+  BackupCli({BackupEngine? engine, StringSink? outSink, StringSink? errSink})
+    : engine = engine ?? const BackupEngine(),
+      out = outSink ?? stdout,
+      err = errSink ?? stderr;
 
   void printUsage() {
     out.writeln('''
@@ -1354,6 +1557,7 @@ Available Subcommands:
   backup      Create a timestamped, verified backup of records and conflicts.
   verify      Validate checksums, manifest, and JSON structure of a backup.
   restore     Safely restore records from backup with overwrite safety snapshot.
+  recover     Roll back an interrupted restore from its safety snapshot.
   test        Run automated self-contained synthetic test suite.
   verify-synthetic (alias for test)
 
@@ -1372,6 +1576,9 @@ Subcommand Details:
     --confirm-overwrite    Required flag if live records exist in the target directory.
                            Automatically takes a pre-restore safety snapshot.
 
+  recover:
+    --target=<path>        Target directory with restore_in_progress.json.
+
   test / verify-synthetic:
     Executes a full verification suite with synthetic records, tamper checks,
     restore validation, and safety snapshot confirmation.
@@ -1380,6 +1587,7 @@ Examples:
   dart run tool/backup_utility.dart backup --destination=E:\\Backups --label=weekly
   dart run tool/backup_utility.dart verify --backup=E:\\Backups\\backup_20260923_080000
   dart run tool/backup_utility.dart restore --backup=E:\\Backups\\backup_20260923_080000 --confirm-overwrite
+  dart run tool/backup_utility.dart recover --target=.local_data
   dart run tool/backup_utility.dart test
 ===============================================================================
 ''');
@@ -1423,11 +1631,7 @@ Examples:
       }
     }
 
-    return {
-      'subcommand': subcommand,
-      'options': options,
-      'flags': flags,
-    };
+    return {'subcommand': subcommand, 'options': options, 'flags': flags};
   }
 
   /// Runs the CLI tool with arguments, returning an exit code.
@@ -1454,6 +1658,8 @@ Examples:
           return await _runVerify(options, flags);
         case 'restore':
           return await _runRestore(options, flags);
+        case 'recover':
+          return await _runRecover(options);
         case 'test':
         case 'verify-synthetic':
           return await _runTest();
@@ -1476,12 +1682,50 @@ Examples:
     final destPath = options['destination'] ?? options['d'];
     if (destPath == null || destPath.trim().isEmpty) {
       err.writeln('Error: Missing required argument: --destination=<path>');
-      out.writeln('Example: dart run tool/backup_utility.dart backup --destination=E:\\Backups');
+      out.writeln(
+        'Example: dart run tool/backup_utility.dart backup --destination=E:\\Backups',
+      );
       return 64;
     }
 
     final srcPath = options['source'] ?? options['s'] ?? '.local_data';
     final label = options['label'] ?? options['l'];
+
+    // The engine can write to any directory for synthetic tests, but the
+    // operator-facing CLI must not mistake a same-PC copy for a real backup.
+    final tempRoot = Directory.systemTemp.absolute.path.toLowerCase();
+    final sourceAbsolute = Directory(srcPath).absolute.path.toLowerCase();
+    final testOverride =
+        flags.contains('allow-local-test-destination') &&
+        Platform.environment['STUDY_BACKUP_TEST_MODE'] == '1' &&
+        sourceAbsolute.startsWith('$tempRoot${Platform.pathSeparator}');
+    if (flags.contains('allow-local-test-destination') && !testOverride) {
+      throw BackupValidationException(
+        'Local destination override is permitted only for synthetic tests under the system temporary directory.',
+      );
+    }
+    if (!testOverride) {
+      if (!Platform.isWindows) {
+        throw BackupValidationException(
+          'Automatic off-device verification is available only on Windows. Use the engine for synthetic tests; do not assume a local path is a backup.',
+        );
+      }
+      final check = await Process.run('powershell', [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        File('tool/validate_backup_destination.ps1').absolute.path,
+        '-Destination',
+        destPath,
+      ]);
+      if (check.exitCode != 0) {
+        throw BackupValidationException(
+          'Destination is not verified off-PC storage. ${check.stderr.toString().trim()}',
+        );
+      }
+    }
 
     out.writeln('=== BACKUP OPERATION STARTED ===');
     out.writeln('Source directory:      $srcPath');
@@ -1498,12 +1742,16 @@ Examples:
 
     out.writeln('\n--- Backup Created Successfully ---');
     out.writeln('Location:     ${result.backupDirectory.path}');
-    out.writeln('Timestamp:    ${result.manifest.timestamp} (UTC: ${result.manifest.createdAt})');
+    out.writeln(
+      'Timestamp:    ${result.manifest.timestamp} (UTC: ${result.manifest.createdAt})',
+    );
     out.writeln('Files Written:');
     for (final entry in result.manifest.files.entries) {
       final name = entry.key;
       final fileInfo = entry.value;
-      out.writeln('  - $name: ${fileInfo.recordCount} records, ${fileInfo.sizeBytes} bytes');
+      out.writeln(
+        '  - $name: ${fileInfo.recordCount} records, ${fileInfo.sizeBytes} bytes',
+      );
       out.writeln('    SHA-256: ${fileInfo.sha256}');
     }
     out.writeln('Manifest:     $manifestFileName');
@@ -1517,7 +1765,9 @@ Examples:
     final backupPath = options['backup'] ?? options['b'];
     if (backupPath == null || backupPath.trim().isEmpty) {
       err.writeln('Error: Missing required argument: --backup=<path>');
-      out.writeln('Example: dart run tool/backup_utility.dart verify --backup=E:\\Backups\\backup_20260923_080000');
+      out.writeln(
+        'Example: dart run tool/backup_utility.dart verify --backup=E:\\Backups\\backup_20260923_080000',
+      );
       return 64;
     }
 
@@ -1551,16 +1801,22 @@ Examples:
     }
   }
 
-  Future<int> _runRestore(Map<String, String> options, Set<String> flags) async {
+  Future<int> _runRestore(
+    Map<String, String> options,
+    Set<String> flags,
+  ) async {
     final backupPath = options['backup'] ?? options['b'];
     if (backupPath == null || backupPath.trim().isEmpty) {
       err.writeln('Error: Missing required argument: --backup=<path>');
-      out.writeln('Example: dart run tool/backup_utility.dart restore --backup=E:\\Backups\\backup_20260923_080000');
+      out.writeln(
+        'Example: dart run tool/backup_utility.dart restore --backup=E:\\Backups\\backup_20260923_080000',
+      );
       return 64;
     }
 
     final targetPath = options['target'] ?? options['t'] ?? '.local_data';
-    final confirmOverwrite = flags.contains('confirm-overwrite') ||
+    final confirmOverwrite =
+        flags.contains('confirm-overwrite') ||
         flags.contains('confirmOverwrite') ||
         flags.contains('force');
 
@@ -1578,7 +1834,9 @@ Examples:
     out.writeln('\n--- Restore Completed Successfully ---');
     out.writeln('Target Location:       ${result.targetDirectory.path}');
     if (result.safetySnapshotDirectory != null) {
-      out.writeln('Pre-Restore Snapshot:  ${result.safetySnapshotDirectory!.path}');
+      out.writeln(
+        'Pre-Restore Snapshot:  ${result.safetySnapshotDirectory!.path}',
+      );
     }
     out.writeln('Restored Records:      ${result.restoredRecordCount}');
     out.writeln('Restored Conflicts:    ${result.restoredConflictCount}');
@@ -1588,6 +1846,15 @@ Examples:
     }
     out.writeln('\n[PASS] Restored files verified and match backup checksums.');
     out.writeln('=== RESTORE COMPLETED SUCCESSFULLY ===');
+    return 0;
+  }
+
+  Future<int> _runRecover(Map<String, String> options) async {
+    final targetPath = options['target'] ?? options['t'] ?? '.local_data';
+    await engine.recoverInterruptedRestore(Directory(targetPath));
+    out.writeln(
+      'Interrupted restore rolled back from its verified safety snapshot.',
+    );
     return 0;
   }
 

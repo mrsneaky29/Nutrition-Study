@@ -160,6 +160,8 @@ For comprehensive operator instructions, see [BACKUP_INSTRUCTIONS.md](BACKUP_INS
 
 Use `tool/backup_utility.ps1` (or the underlying `tool/backup_utility.dart`) as the official verified backup and restore utility. It enforces SHA-256 cryptographic manifest verification, prevents silent overwrites, creates pre-restore safety snapshots, and tests integrity automatically.
 
+Stop the sync server after all collector uploads finish and before running backup or restore. On Windows, backup rejects destinations that are not identifiable as removable, USB-attached, or remote network storage. A same-PC fixed disk does not count as off-device backup.
+
 #### 1. Daily Backup Command (Post-Sync Window)
 
 Run after each daily sync window when pending upload counts on collector phones reach zero:
@@ -202,6 +204,8 @@ powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 `
 
 Restores database files from a verified backup into the local target directory.
 If existing database files are present, the utility refuses to overwrite them unless `-ConfirmOverwrite` is specified. When confirmed, a pre-restore safety snapshot of the live data is automatically archived into `.local_data\pre_restore_safety_backup_<timestamp>\` before replacing files.
+
+The two database files cannot be replaced as a single filesystem transaction. An interrupted restore leaves `restore_in_progress.json`, and the server refuses to start with possibly mixed data. With the server stopped, run `powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action Recover -Target ".local_data"` to verify the safety snapshot and roll back. Never delete the marker manually.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 `

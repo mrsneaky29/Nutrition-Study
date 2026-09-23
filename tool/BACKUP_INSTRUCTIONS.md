@@ -10,7 +10,7 @@ The home-PC server maintains all synced study data in `.local_data/`:
 - `.local_data/records.json`: Primary visit records store.
 - `.local_data/conflicts.json`: Conflict inbox for rejected or ambiguous submissions.
 
-The backup utility provides cryptographic SHA-256 verification, manifest generation, collision-safe naming, atomic operations, and overwrite safety snapshots.
+The backup utility provides SHA-256 integrity verification, manifest generation, collision-safe naming, per-file atomic writes, and overwrite safety snapshots. Checksums detect accidental changes; someone who can edit both the data and manifest can replace both checksums.
 
 ### Single-Disk `.bak` vs. Off-Device Backups
 
@@ -40,6 +40,8 @@ The backup utility will create a timestamped folder inside your designated desti
 
 Existing backups are **never overwritten**. If two backups are run in the same second, an incrementing unique suffix is automatically appended.
 
+On Windows, both the wrapper and the direct Dart backup command reject destinations that cannot be identified as a removable drive, USB-attached disk, or remote network share. A path on the PC's fixed internal disk is rejected even if it is nonempty. Unavailable drives and shares are rejected. If your external device is not recognized, use a recognized USB drive or remote share; do not relabel an on-PC copy as an off-device backup.
+
 ---
 
 ## 3. Daily Backup Procedure (Post-Sync Window)
@@ -50,6 +52,7 @@ Run an off-device backup after every daily 2–3 hour sync window once field col
 Before creating a backup:
 1. Open the Admin Portal (`lib/admin_main.dart`) or inspect collector devices.
 2. Confirm all pending submissions have uploaded and the server's record count matches field visit logs.
+3. Stop the sync server before copying the two database files, then restart it after backup verification. This prevents a backup from capturing records and conflicts at different moments.
 
 ### Step 2: Run the Backup Utility
 
@@ -148,12 +151,20 @@ Use this procedure if the original PC suffered total hardware failure, drive los
 
 ### Scenario B: Restoring onto an Existing Installation (Overwrite Protection)
 
-To prevent accidental data loss, the restore utility includes two safety layers:
+Stop the sync server before any restore. To prevent accidental data loss, the restore utility includes these safety layers:
 
 1. **Explicit Confirmation**: If `.local_data/records.json` or `.local_data/conflicts.json` already exists, running `Restore` without `-ConfirmOverwrite` **aborts immediately** with an error message.
 2. **Pre-Restore Safety Snapshot**: When `-ConfirmOverwrite` is passed, the utility automatically archives all existing live target files into a safety directory before replacing them:
    `.local_data\pre_restore_safety_backup_<yyyyMMdd_HHmmss>\`
-3. **Atomic Replacement**: Files are written to temporary staging files first and moved atomically into place.
+3. **Interrupted-restore guard**: Each file is replaced atomically, but the pair is not one filesystem transaction. A marker blocks server startup while a restore is incomplete. Ordinary write failures trigger an automatic rollback to the verified safety snapshot.
+
+If power is lost mid-restore, leave the server stopped. Run `-Action Recover` to verify and restore the pre-restore snapshot; only start the server after recovery succeeds:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action Recover -Target ".local_data"
+```
+
+If recovery reports a missing or damaged snapshot, do not remove `restore_in_progress.json` by hand. Restore from a verified off-device backup into a fresh installation instead.
 
 Command to restore with overwrite confirmation:
 

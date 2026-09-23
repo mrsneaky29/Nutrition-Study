@@ -511,6 +511,15 @@ class LocalRecordStore {
 
   Future<void> load() async {
     await _dataDirectory.create(recursive: true);
+    final interruptedRestore = File(
+      '${_dataDirectory.path}${Platform.pathSeparator}restore_in_progress.json',
+    );
+    if (await interruptedRestore.exists()) {
+      throw StateError(
+        'An interrupted restore was detected. Do not serve possibly mixed records. '
+        'Run the backup utility recover action for ${_dataDirectory.path} first.',
+      );
+    }
     await _loadRecords();
     await _loadConflicts();
   }
