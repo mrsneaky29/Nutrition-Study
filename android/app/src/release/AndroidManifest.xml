@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The home-PC sync endpoint currently uses HTTP on a trusted LAN.
+         Remove this release override when the endpoint moves to HTTPS. -->
+    <application android:usesCleartextTraffic="true" />
+</manifest>
