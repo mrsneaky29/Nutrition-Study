@@ -152,36 +152,75 @@ When multiple collectors operate offline, data discrepancies may occasionally oc
 > However, **these reside on the same physical drive as the primary data**.
 > While `.bak` snapshots protect against process crashes or power interruptions during atomic file writes, **they are NOT off-device backups**.
 > A drive failure, operating system crash, ransomware infection, or accidental deletion will destroy both primary and `.bak` files simultaneously.
+> **Real off-device backups must physically leave the home PC.**
 
-### Scheduled Off-Device Backup Procedure
+For comprehensive operator instructions, see [BACKUP_INSTRUCTIONS.md](BACKUP_INSTRUCTIONS.md).
 
-After each daily sync window, copy `.local_data/records.json` and `.local_data/conflicts.json` to an external USB drive or dedicated network share with an ISO timestamp.
+### Official Verified Backup & Restore Utility
 
-#### PowerShell (Windows USB/Network Backup):
+Use `tool/backup_utility.ps1` (or the underlying `tool/backup_utility.dart`) as the official verified backup and restore utility. It enforces SHA-256 cryptographic manifest verification, prevents silent overwrites, creates pre-restore safety snapshots, and tests integrity automatically.
+
+#### 1. Daily Backup Command (Post-Sync Window)
+
+Run after each daily sync window when pending upload counts on collector phones reach zero:
 
 ```powershell
-$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$backupDir = "D:\StudyBackups"  # Path to external USB drive or network share (e.g. \\nas\backups)
-if (-not (Test-Path $backupDir)) { New-Item -ItemType Directory -Path $backupDir -Force }
-Copy-Item -Path ".local_data\records.json" -Destination "$backupDir\records-$timestamp.json"
-if (Test-Path ".local_data\conflicts.json") {
-  Copy-Item -Path ".local_data\conflicts.json" -Destination "$backupDir\conflicts-$timestamp.json"
-}
-Write-Host "Off-device backup completed to $backupDir at $timestamp"
+powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 `
+  -Action Backup `
+  -Destination "E:\StudyBackups"
 ```
 
-#### Bash (Linux / macOS USB/Network Backup):
+*(Direct Dart alternative: `dart run tool/backup_utility.dart backup --destination="E:\StudyBackups"`)*
 
-```bash
-timestamp=$(date +%Y%m%d-%H%M%S)
-backupDir="/media/usb/StudyBackups"  # Path to external mount or network share
-mkdir -p "$backupDir"
-cp .local_data/records.json "$backupDir/records-${timestamp}.json"
-if [ -f ".local_data/conflicts.json" ]; then
-  cp .local_data/conflicts.json "$backupDir/conflicts-${timestamp}.json"
-fi
-echo "Off-device backup completed to $backupDir at $timestamp"
+Optional label:
+```powershell
+powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 `
+  -Action Backup `
+  -Destination "E:\StudyBackups" `
+  -Label "evening_sync"
 ```
+
+This creates a timestamped folder `E:\StudyBackups\backup_<yyyyMMdd_HHmmss>/` containing:
+- `records.json`: Synced participant visit records.
+- `conflicts.json`: Current conflict records (or empty list `[]` if none).
+- `manifest.json`: Metadata with file sizes, record counts, and SHA-256 hashes.
+- `SHA256SUMS`: Standard checksum file for external tools.
+
+#### 2. Integrity Verification Command
+
+Verify the cryptographic checksums and JSON schemas of any backup folder anytime:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 `
+  -Action Verify `
+  -BackupPath "E:\StudyBackups\backup_20260923_180000"
+```
+
+*(Direct Dart alternative: `dart run tool/backup_utility.dart verify --backup="E:\StudyBackups\backup_20260923_180000"`)*
+
+#### 3. Safe Restore Command
+
+Restores database files from a verified backup into the local target directory.
+If existing database files are present, the utility refuses to overwrite them unless `-ConfirmOverwrite` is specified. When confirmed, a pre-restore safety snapshot of the live data is automatically archived into `.local_data\pre_restore_safety_backup_<timestamp>\` before replacing files.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 `
+  -Action Restore `
+  -BackupPath "E:\StudyBackups\backup_20260923_180000" `
+  -ConfirmOverwrite
+```
+
+*(Direct Dart alternative: `dart run tool/backup_utility.dart restore --backup="E:\StudyBackups\backup_20260923_180000" --confirm-overwrite`)*
+
+#### 4. Automated Self-Test Command
+
+Executes a self-contained synthetic end-to-end verification (backup creation, manifest validation, tamper detection with hash mismatch, restore validation, and overwrite protection):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action SelfTest
+```
+
+*(Direct Dart alternative: `dart run tool/backup_utility.dart test`)*
 
 ### Disaster Recovery Procedures
 
@@ -199,15 +238,14 @@ echo "Off-device backup completed to $backupDir at $timestamp"
 
 1. Provision a replacement computer and clone or install the project repository.
 2. Insert the external USB backup drive containing the timestamped backups.
-3. Locate the most recent clean backup files (e.g., `records-20260923-180000.json` and `conflicts-20260923-180000.json`).
-4. Recreate the `.local_data/` directory and restore both files:
+3. Locate the most recent clean backup directory (e.g., `E:\StudyBackups\backup_20260923_180000`).
+4. Restore using the verified utility:
    ```powershell
-   New-Item -ItemType Directory -Path ".local_data" -Force
-   Copy-Item -Path "D:\StudyBackups\records-20260923-180000.json" -Destination ".local_data\records.json"
-   if (Test-Path "D:\StudyBackups\conflicts-20260923-180000.json") {
-     Copy-Item -Path "D:\StudyBackups\conflicts-20260923-180000.json" -Destination ".local_data\conflicts.json"
-   }
+   powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 `
+     -Action Restore `
+     -BackupPath "E:\StudyBackups\backup_20260923_180000"
    ```
+   *(Or manual fallback copy: copy `records.json` and `conflicts.json` directly into `.local_data/`).*
 5. Launch the local sync server with the configured collector and admin keys:
    ```powershell
    dart run tool/local_sync_server.dart --host=0.0.0.0 --port=8787

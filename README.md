@@ -170,35 +170,28 @@ may work if every collector returns, keeps the app active until pending sync rea
 
 The automatic `.local_data/records.json.bak` snapshot is on the same disk and is
 **not** an off-device backup. Drive failure or system corruption will destroy both files.
-Regularly copy both `records.json` and `conflicts.json` to an external USB drive or network share:
+Use the official backup utility (`tool/backup_utility.ps1` or `tool/backup_utility.dart`) to create cryptographic SHA-256 verified off-device backups to an external USB drive or network share:
 
-#### PowerShell (Windows USB/Network Backup):
+- **Backup (post-sync window)**:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action Backup -Destination "E:\StudyBackups"
+  ```
+- **Verify integrity**:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action Verify -BackupPath "E:\StudyBackups\backup_20260923_180000"
+  ```
+- **Safe restore**:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action Restore -BackupPath "E:\StudyBackups\backup_20260923_180000" -ConfirmOverwrite
+  ```
+- **Automated self-test**:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action SelfTest
+  ```
 
-```powershell
-$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$backupDir = "D:\StudyBackups"  # Path to external USB drive or network share
-if (-not (Test-Path $backupDir)) { New-Item -ItemType Directory -Path $backupDir -Force }
-Copy-Item -Path ".local_data\records.json" -Destination "$backupDir\records-$timestamp.json"
-if (Test-Path ".local_data\conflicts.json") {
-  Copy-Item -Path ".local_data\conflicts.json" -Destination "$backupDir\conflicts-$timestamp.json"
-}
-Write-Host "Off-device backup completed to $backupDir at $timestamp"
-```
+*(Direct Dart alternatives: `dart run tool/backup_utility.dart backup|verify|restore|test`)*.
 
-#### Bash (Linux / macOS USB/Network Backup):
-
-```bash
-timestamp=$(date +%Y%m%d-%H%M%S)
-backupDir="/media/usb/StudyBackups"  # Path to external mount or network share
-mkdir -p "$backupDir"
-cp .local_data/records.json "$backupDir/records-${timestamp}.json"
-if [ -f ".local_data/conflicts.json" ]; then
-  cp .local_data/conflicts.json "$backupDir/conflicts-${timestamp}.json"
-fi
-echo "Off-device backup completed to $backupDir at $timestamp"
-```
-
-If the primary `records.json` is corrupted on disk, the server automatically recovers from `.local_data/records.json.bak`. For full disaster recovery steps and migration procedures, see [LOCAL_SYNC.md](tool/LOCAL_SYNC.md).
+If the primary `records.json` is corrupted on disk, the server automatically recovers from `.local_data/records.json.bak`. For full operator instructions, see [BACKUP_INSTRUCTIONS.md](tool/BACKUP_INSTRUCTIONS.md) and [LOCAL_SYNC.md](tool/LOCAL_SYNC.md).
 
 ## Verification
 
