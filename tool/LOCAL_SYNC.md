@@ -36,30 +36,33 @@ Collector identities are bound directly to their respective bearer keys:
 
 #### PowerShell (Windows):
 
+Replace every angle-bracketed value below with a different, privately generated secret before starting the server; the text shown is not a usable credential.
+
 ```powershell
-$env:LOCAL_SYNC_COLLECTOR_KEYS = "C001:collector1-secret-key-12345,C002:collector2-secret-key-67890"
-$env:LOCAL_SYNC_ADMIN_KEY = "admin-secret-management-key-99999"
+$env:LOCAL_SYNC_COLLECTOR_KEYS = "C001:<unique-random-secret-for-collector-1>,C002:<unique-random-secret-for-collector-2>"
+$env:LOCAL_SYNC_ADMIN_KEY = "<unique-random-admin-secret>"
 dart run tool/local_sync_server.dart --host=0.0.0.0 --port=8787
 ```
 
 #### Bash (Linux / macOS):
 
 ```bash
-export LOCAL_SYNC_COLLECTOR_KEYS="C001:collector1-secret-key-12345,C002:collector2-secret-key-67890"
-export LOCAL_SYNC_ADMIN_KEY="admin-secret-management-key-99999"
+export LOCAL_SYNC_COLLECTOR_KEYS="C001:<unique-random-secret-for-collector-1>,C002:<unique-random-secret-for-collector-2>"
+export LOCAL_SYNC_ADMIN_KEY="<unique-random-admin-secret>"
 dart run tool/local_sync_server.dart --host=0.0.0.0 --port=8787
 ```
 
 ---
 
-## 2. Collector Provisioning & Offline Field Operations
+## 2. Collector Sign-In & Offline Field Operations
 
 Field collectors operate in communities with intermittent or zero internet and cellular connectivity. The system is architected for offline safety:
 
-1. **Device Provisioning & Identity Locking**:
-   - Each collector's device is provisioned with their assigned collector number locked to the app.
-   - Locking is achieved at build time via `--dart-define=LOCAL_COLLECTOR_ID=C001` (or `-CollectorId C001` / `-CollectorNumber 1` in release packaging scripts), or during first-time setup on the phone.
-   - Once locked, the app automatically stamps all newly created records with the provisioned collector identity.
+1. **Shared APK & Runtime Sign-In**:
+   - Install the same signed APK on any collector phone. A collector enters their number (for example, `1`), the home-PC server URL, and their own access key on the sign-in screen. The key and collector number are not compiled into the APK.
+   - Initial sign-in requires reaching the server to obtain a session. The latest successful sign-in for that collector number supersedes the prior phone session; no phone is permanently bound to a collector.
+   - A superseded phone cannot upload with its old session. Records already saved there remain on that phone. Drain or recover its pending submissions before replacing or clearing it; signing in there again takes over the session from the other phone.
+   - Explicit sign-out clears the locally saved collector access key and session token. It does not erase stored visit records.
 2. **Offline Data Collection**:
    - Field collectors work completely offline throughout the day.
    - Submitted records are stored in Android secure storage on the device. This implementation does not use SQLite.
@@ -69,16 +72,16 @@ Field collectors operate in communities with intermittent or zero internet and c
 
 ## 3. Participant ID Scheme & Repeat-Visit Protocol
 
-### Collector-Scoped Participant IDs (No 200 Limit)
+### Collision-Safe Participant IDs (No 200 Limit)
 
-To prevent ID collisions across devices without central coordination, participant Study IDs use a deterministic collector-scoped scheme:
-
-$$\text{Format: } \mathbf{C\langle colNum\rangle\text{-}\langle sequence\rangle} \quad \text{(e.g., } \mathbf{C01\text{-}000001}, \mathbf{C02\text{-}000001}\text{)}$$
-
-- **Collector Prefix**: 2 digits (`C01` through `C99`).
-- **Sequence Number**: At least 6 digits, growing beyond `999999` when needed. There is no configured 200-participant block or 999,999-person cap.
-- **Collision Avoidance**: Distinct collector numbers give distinct prefixes. A collector must keep its assigned number on one device; provisioning the same collector number on two independent phones can still create duplicate IDs.
-- **Legacy Compatibility**: Legacy participant ID formats such as `P001`, `P002`, and `P0001` remain fully supported and validated.
+For new participants the app generates a Study ID with the collector prefix and
+a random 16-digit numeric suffix (for example, `C01-4827163094582731`). The
+suffix is not a counter, so two offline phones using the same collector number
+do not suggest the same next ID. A collision is still checked by the server at
+sync time. There is no 200-participant block or fixed participant-count limit.
+Existing sequential `C01-000001` and legacy `P001`-style IDs remain valid for
+repeat visits. The Study ID identifies the participant; Visit 1, Visit 2, etc.
+remain simple visit numbers.
 
 ### Repeat-Visit Workflow
 
@@ -102,14 +105,14 @@ The home-PC server is designed for intermittent operation and does not need to r
 [Field Collection: Offline]  --->  [Return to Base: Wi-Fi]  --->  [Admin Review & Backup]
 • Questionnaires recorded           • PC starts (2-3 hr window)    • Review /conflicts inbox
 • Android secure storage            • Retry with idempotency      • USB/Network off-device backup
-• Collector-scoped IDs              • Pending sync: 0              • PC shutdown
+• Collision-safe Study IDs          • Pending sync: 0              • PC shutdown
 ```
 
 1. **Daily Sync Window (2–3 hours/day)**:
    - The study coordinator powers on the home PC and starts `local_sync_server.dart` during a designated daily window (e.g., 5:00 PM – 8:00 PM) when field teams return from data collection.
 2. **Local Wi-Fi Synchronization**:
    - Upon returning to base, collectors connect their mobile devices to the home Wi-Fi network.
-   - The collector app uses the sync endpoint embedded at build time (`http://<computer-wifi-ip>:8787`); it does not discover the PC address automatically. Pending records retry while the app is open and active.
+   - The collector enters the sync endpoint at sign-in (`http://<computer-wifi-ip>:8787`); it may also be supplied as an APK default. The app does not discover the PC address automatically. Pending records retry while the app is open and active with a current session.
    - Idempotency keys ensure network interruptions or repeated attempts safely return the existing record without duplicating entries or overwriting admin edits.
 3. **Window Closing & Shutdown**:
    - Once all collectors confirm `Pending sync: 0`, the administrator reviews incoming records and conflicts, makes an off-device backup, and shuts down the service. Backup commands below are manual; there is no scheduled backup script.
@@ -263,32 +266,45 @@ powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action SelfTes
 
 ### Web Clients (`tool/build_web_clients.ps1`)
 
-Build both the collector web app and the admin portal, optionally binding the collector identity:
+Build both web entrypoints for local previews. The script's optional
+collector-key and identity parameters are legacy keyed-build options, not
+part of the shared-APK release workflow:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tool/build_web_clients.ps1 `
-  -LocalApiBaseUrl http://<computer-wifi-ip>:8787 `
-  -CollectorApiKey collector1-secret-key-12345 `
-  -CollectorId C001 -SigningBackupConfirmed
+powershell -ExecutionPolicy Bypass -File tool/build_web_clients.ps1
 ```
-
-*(You may alternatively pass `-CollectorNumber 1`, which formats as `C001` automatically).*
 
 ### Android Release Packages (`tool/package_android_release.ps1`)
 
-Package a signed release APK and App Bundle with embedded LAN configuration and provisioned collector identity. Create the release signing key once using `tool/create_release_signing.ps1`, then copy its private backup to a separate secure location:
+Package one signed APK and App Bundle for all collectors. Create the release
+signing key once using `tool/create_release_signing.ps1`, then copy its private
+backup to a separate secure location:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tool/package_android_release.ps1 `
   -BuildName 1.0.0 -BuildNumber 1 `
   -LocalApiBaseUrl http://<computer-wifi-ip>:8787 `
-  -CollectorApiKey collector1-secret-key-12345 `
-  -CollectorId C001
+  -SigningBackupConfirmed
 ```
 
-Each collector's artifacts go under `dist/android/C001/` (or its assigned collector ID). The script refuses to overwrite a prior artifact and requires a higher build number for that collector's next release. Keep the same application ID and signing key for updates. The LAN address and collector key are compiled into each package; distribute only to the intended collector on a trusted network. Do not publish a LAN-keyed App Bundle publicly.
+Artifacts go under `dist/android/shared/`. The script refuses to overwrite a
+prior artifact and requires a higher build number for each update. Keep the
+same application ID and signing key for updates. The optional LAN address is
+a default, while collector number and key are entered at runtime. A private
+LAN address does not make the home-PC server reachable over the public
+internet; do not expose the HTTP service publicly.
 
-For however many collector phones are actually used, assign each a unique collector number and package once per collector with its matching server key. The current collector-number input accepts 1–99; this does not limit participant records. `-SigningBackupConfirmed` only records the operator's acknowledgement; first make and verify an off-PC backup of both `android/app/study-release.jks` and `android/key.properties`. The script does not create that off-device backup, and signed distribution must wait until it exists.
+Assign collector numbers and matching server keys to people rather than
+phones. Do not build or distribute a separate APK for each number. If a
+collector changes phones, the latest successful sign-in becomes active; drain
+or recover pending data on the old phone first. `-SigningBackupConfirmed` only
+records the operator's acknowledgement; first make and verify an off-PC backup
+of both `android/app/study-release.jks` and `android/key.properties`. The
+script does not create that off-device backup. The generic login and
+collision-safe ID paths have automated tests. Before using the release for
+real data, configure the real server and admin portal, test an off-PC
+participant-data backup and restore, and complete a physical multi-phone
+offline-to-sync trial.
 
 ---
 

@@ -7,6 +7,14 @@ import 'package:http/http.dart' as http;
 import '../domain/participant_id.dart';
 import 'local_record_sync_gateway.dart';
 
+/// The collector number has been signed in on another phone.
+class CollectorSessionExpiredException implements Exception {
+  const CollectorSessionExpiredException();
+
+  @override
+  String toString() => 'Collector session expired. Sign in again.';
+}
+
 /// HTTP implementation for the optional collector-to-PC LAN connection.
 ///
 /// Configure it only for a physical LAN build, for example with
@@ -17,6 +25,7 @@ class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
     http.Client? client,
     String? apiBaseUrl,
     String? apiKey,
+    this.sessionToken,
     this.timeout = const Duration(seconds: 5),
   }) : _client = client ?? http.Client(),
        _apiBaseUrl = apiBaseUrl ?? configuredApiBaseUrl,
@@ -31,7 +40,34 @@ class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
   final http.Client _client;
   final String _apiBaseUrl;
   final String _apiKey;
+  String? sessionToken;
   final Duration timeout;
+
+  /// A new successful login supersedes the previous phone for this collector.
+  Future<String> startSession(String collectorId) async {
+    final base = _apiBaseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+    final endpoint = Uri.tryParse('$base/collector/session');
+    if (endpoint == null || !endpoint.hasScheme || endpoint.host.isEmpty) {
+      throw const FormatException('Enter a valid server address.');
+    }
+    final response = await _client.post(
+      endpoint,
+      headers: {
+        'content-type': 'application/json',
+        'x-local-sync-key': _apiKey,
+      },
+      body: jsonEncode({'collectorId': collectorId}),
+    ).timeout(timeout);
+    final body = _tryParseJsonMap(response.body);
+    if (response.statusCode != 200 || body?['sessionToken'] is! String ||
+        body?['collectorId'] != collectorId) {
+      throw StateError(
+        body?['error']?.toString() ?? 'Collector login failed (${response.statusCode}).',
+      );
+    }
+    sessionToken = body!['sessionToken'] as String;
+    return sessionToken!;
+  }
 
   SyncResponse? _lastResponse;
 
@@ -73,6 +109,7 @@ class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
             endpoint,
             headers: {
               'x-local-sync-key': _apiKey,
+              if (sessionToken case final String token) 'x-local-session': token,
             },
           )
           .timeout(timeout);
@@ -132,7 +169,13 @@ class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
         return const ParticipantLookupResult.notFound();
       }
 
+      if (response.statusCode == HttpStatus.unauthorized) {
+        throw const CollectorSessionExpiredException();
+      }
+
       return const ParticipantLookupResult.offline();
+    } on CollectorSessionExpiredException {
+      rethrow;
     } on TimeoutException {
       return const ParticipantLookupResult.offline();
     } on SocketException {
@@ -163,6 +206,7 @@ class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
             headers: {
               'content-type': 'application/json',
               'x-local-sync-key': _apiKey,
+              if (sessionToken case final String token) 'x-local-session': token,
             },
             body: jsonEncode(record),
           )

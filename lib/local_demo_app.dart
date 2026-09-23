@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
 
 import 'collector/collector_cloud_controller.dart';
 import 'collector_auth/collector_access.dart';
@@ -32,6 +34,7 @@ class LocalDemoApp extends StatefulWidget {
     this.recordStore,
     this.cloudController,
     this.secureStorage,
+    this.localHttpClient,
     super.key,
   });
 
@@ -39,6 +42,9 @@ class LocalDemoApp extends StatefulWidget {
   final LocalRecordStore? recordStore;
   final CollectorCloudController? cloudController;
   final FlutterSecureStorage? secureStorage;
+
+  /// Optional transport override for deterministic local-server tests.
+  final http.Client? localHttpClient;
 
   @override
   State<LocalDemoApp> createState() => _LocalDemoAppState();
@@ -161,9 +167,11 @@ class _LocalRecord {
 
 class _LocalDemoAppState extends State<LocalDemoApp>
     with WidgetsBindingObserver {
+  static const _genericRelease = bool.fromEnvironment('LOCAL_GENERIC_RELEASE');
   static const _envCollectorId = String.fromEnvironment('LOCAL_COLLECTOR_ID');
-  static const _envCollectorNumber =
-      String.fromEnvironment('LOCAL_COLLECTOR_NUMBER');
+  static const _envCollectorNumber = String.fromEnvironment(
+    'LOCAL_COLLECTOR_NUMBER',
+  );
 
   static final Map<LocalRecordStore, String> _storeProvisioning = {};
 
@@ -194,11 +202,13 @@ class _LocalDemoAppState extends State<LocalDemoApp>
   bool _isSigningIn = false;
   String _collectorCode = _demoCollectorCode;
   String? _provisionedCollectorCode;
+  String _savedServerUrl = '';
+  String _savedApiKey = '';
   bool _isRetrying = false;
   bool _isLoadingRecords = true;
   String? _recordLoadError;
   Future<void> _writeTail = Future<void>.value();
-  late final LocalRecordSyncGateway _syncGateway;
+  late LocalRecordSyncGateway _syncGateway;
   late final LocalRecordStore _recordStore;
   Timer? _retryTimer;
   bool _isAppActive = true;
@@ -209,8 +219,11 @@ class _LocalDemoAppState extends State<LocalDemoApp>
     WidgetsBinding.instance.addObserver(this);
     _syncGateway = widget.syncGateway ?? HttpLocalRecordSyncClient();
     _recordStore = widget.recordStore ?? SecureLocalRecordStore();
+    if (_genericRelease) {
+      _savedServerUrl = HttpLocalRecordSyncClient.configuredApiBaseUrl;
+    }
     final envCode = _resolveConfiguredCollectorCode();
-    if (envCode != null) {
+    if (envCode != null && !_genericRelease) {
       _collectorCode = envCode;
       _provisionedCollectorCode = envCode;
       _isSignedIn = true;
@@ -269,8 +282,9 @@ class _LocalDemoAppState extends State<LocalDemoApp>
   Future<void> _signIn(ui.CollectorAccessInput credentials) async {
     final rawCode = credentials.collectorCode.trim().toUpperCase();
     final numberMatch = RegExp(r'^C?(\d+)$').firstMatch(rawCode);
-    final number =
-        numberMatch != null ? int.tryParse(numberMatch.group(1)!) : null;
+    final number = numberMatch != null
+        ? int.tryParse(numberMatch.group(1)!)
+        : null;
 
     if (number == null || number < 1 || number > 99) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -283,10 +297,51 @@ class _LocalDemoAppState extends State<LocalDemoApp>
 
     final formattedCode = 'C${number.toString().padLeft(3, '0')}';
 
+    if (_genericRelease && widget.cloudController == null) {
+      setState(() => _isSigningIn = true);
+      try {
+        final client = HttpLocalRecordSyncClient(
+          client: widget.localHttpClient,
+          apiBaseUrl: credentials.serverUrl,
+          apiKey: credentials.accessKey,
+        );
+        final token = await client.startSession(formattedCode);
+        final storage = widget.secureStorage ?? const FlutterSecureStorage();
+        await storage.write(
+          key: 'local_server_url',
+          value: credentials.serverUrl,
+        );
+        await storage.write(
+          key: 'local_collector_key',
+          value: credentials.accessKey,
+        );
+        await storage.write(key: 'local_session_token', value: token);
+        await storage.write(key: 'local_collector_code', value: formattedCode);
+        if (!mounted) return;
+        _syncGateway = client;
+        _savedServerUrl = credentials.serverUrl;
+        _savedApiKey = credentials.accessKey;
+        setState(() {
+          _collectorCode = formattedCode;
+          _isSignedIn = true;
+        });
+        _startRetryTimer();
+        unawaited(_retryPendingSubmissions());
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Sign-in failed: $error')));
+      } finally {
+        if (mounted) setState(() => _isSigningIn = false);
+      }
+      return;
+    }
+
     // Lock check: Once provisioned, lock the collector number to this phone
     if (_provisionedCollectorCode != null &&
         _provisionedCollectorCode != formattedCode) {
-      final lockedNum = int.tryParse(
+      final lockedNum =
+          int.tryParse(
             _provisionedCollectorCode!.replaceAll(RegExp(r'\D'), ''),
           ) ??
           _provisionedCollectorCode;
@@ -350,9 +405,23 @@ class _LocalDemoAppState extends State<LocalDemoApp>
     unawaited(_retryPendingSubmissions());
   }
 
-  void _signOut() {
+  Future<void> _clearLocalSession() async {
     _retryTimer?.cancel();
-    setState(() => _isSignedIn = false);
+    if (mounted) {
+      setState(() {
+        _isSignedIn = false;
+        _savedApiKey = '';
+      });
+    }
+    if (_genericRelease && widget.cloudController == null) {
+      final storage = widget.secureStorage ?? const FlutterSecureStorage();
+      await storage.delete(key: 'local_collector_key');
+      await storage.delete(key: 'local_session_token');
+    }
+  }
+
+  void _signOut() {
+    unawaited(_clearLocalSession());
   }
 
   @override
@@ -395,13 +464,24 @@ class _LocalDemoAppState extends State<LocalDemoApp>
     if (!_isSignedIn) {
       return Stack(
         children: [
-          ui.SignInScreen(onSignIn: _signIn),
+          ui.SignInScreen(
+            key: ValueKey('sign-in-$_collectorCode-$_savedServerUrl'),
+            onSignIn: _signIn,
+            showLocalSetup: _genericRelease && widget.cloudController == null,
+            initialCollectorNumber: _genericRelease
+                ? (int.tryParse(_collectorCode.replaceAll(RegExp(r'\D'), '')) ??
+                          1)
+                      .toString()
+                : '',
+            initialServerUrl: _savedServerUrl,
+            initialAccessKey: _genericRelease ? '' : _savedApiKey,
+          ),
           if (_isSigningIn)
             const ColoredBox(
               color: Color(0x66000000),
               child: Center(child: CircularProgressIndicator()),
             ),
-          if (widget.cloudController == null)
+          if (widget.cloudController == null && !_genericRelease)
             const Align(
               alignment: Alignment.bottomCenter,
               child: SafeArea(
@@ -461,6 +541,30 @@ class _LocalDemoAppState extends State<LocalDemoApp>
       }
       if (_provisionedCollectorCode == null && restored.isNotEmpty) {
         _provisionedCollectorCode = restored.first.collector;
+      }
+      if (_genericRelease && widget.cloudController == null) {
+        final storage = widget.secureStorage ?? const FlutterSecureStorage();
+        _savedServerUrl =
+            await storage.read(key: 'local_server_url') ?? _savedServerUrl;
+        _savedApiKey = await storage.read(key: 'local_collector_key') ?? '';
+        final token = await storage.read(key: 'local_session_token');
+        final code = await storage.read(key: 'local_collector_code');
+        if (_savedServerUrl.isNotEmpty &&
+            _savedApiKey.isNotEmpty &&
+            token != null &&
+            token.isNotEmpty &&
+            code != null &&
+            code.isNotEmpty) {
+          _syncGateway = HttpLocalRecordSyncClient(
+            client: widget.localHttpClient,
+            apiBaseUrl: _savedServerUrl,
+            apiKey: _savedApiKey,
+            sessionToken: token,
+          );
+          _collectorCode = code;
+          _isSignedIn = true;
+          _startRetryTimer();
+        }
       }
       if (!mounted) return;
       setState(() {
@@ -525,6 +629,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
       pendingCount: _records
           .where(
             (record) =>
+                record.collector == _collectorCode &&
                 !record.syncConflict &&
                 (record.syncState == ui.SyncState.pending ||
                     record.syncState == ui.SyncState.failed),
@@ -568,7 +673,11 @@ class _LocalDemoAppState extends State<LocalDemoApp>
 
     final canonicalPhone = phone.length == 12 ? '+$phone' : '+91$phone';
     final matchingPhone = _records
-        .where((record) => record.participant.phone == canonicalPhone)
+        .where(
+          (record) =>
+              record.collector == _collectorCode &&
+              record.participant.phone == canonicalPhone,
+        )
         .toList();
     final localCandidates = <String, ParticipantLookupCandidate>{};
     for (final record in matchingPhone) {
@@ -579,8 +688,10 @@ class _LocalDemoAppState extends State<LocalDemoApp>
       localCandidates[id] = ParticipantLookupCandidate(
         studyId: id,
         name: record.participant.name,
-        nextVisitNumber: previous == null || nextVisit > previous.nextVisitNumber
-            ? nextVisit : previous.nextVisitNumber,
+        nextVisitNumber:
+            previous == null || nextVisit > previous.nextVisitNumber
+            ? nextVisit
+            : previous.nextVisitNumber,
       );
     }
     String? participantNumber;
@@ -621,6 +732,17 @@ class _LocalDemoAppState extends State<LocalDemoApp>
         lookup = await _syncGateway
             .lookupParticipant(canonicalPhone)
             .timeout(const Duration(seconds: 3));
+      } on CollectorSessionExpiredException {
+        await _clearLocalSession();
+        if (!screenContext.mounted) return;
+        ScaffoldMessenger.of(screenContext).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'This collector number signed in on another phone. Sign in again here to take over.',
+            ),
+          ),
+        );
+        return;
       } catch (_) {
         lookup = null;
       }
@@ -631,15 +753,16 @@ class _LocalDemoAppState extends State<LocalDemoApp>
       final remoteCandidates = lookup?.isAmbiguous == true
           ? lookup!.candidates
           : lookup?.found == true && lookup?.studyId != null
-              ? [
-                  ParticipantLookupCandidate(
-                    studyId: lookup!.studyId!,
-                    name: lookup.name?.trim().isNotEmpty == true
-                        ? lookup.name!.trim() : assignedName,
-                    nextVisitNumber: lookup.nextVisitNumber ?? 2,
-                  ),
-                ]
-              : <ParticipantLookupCandidate>[];
+          ? [
+              ParticipantLookupCandidate(
+                studyId: lookup!.studyId!,
+                name: lookup.name?.trim().isNotEmpty == true
+                    ? lookup.name!.trim()
+                    : assignedName,
+                nextVisitNumber: lookup.nextVisitNumber ?? 2,
+              ),
+            ]
+          : <ParticipantLookupCandidate>[];
       for (final remote in remoteCandidates) {
         final id = normalizeParticipantStudyId(remote.studyId);
         if (id == null) continue;
@@ -647,9 +770,10 @@ class _LocalDemoAppState extends State<LocalDemoApp>
         candidatesById[id] = ParticipantLookupCandidate(
           studyId: id,
           name: remote.name,
-          nextVisitNumber: local == null ||
-                  remote.nextVisitNumber > local.nextVisitNumber
-              ? remote.nextVisitNumber : local.nextVisitNumber,
+          nextVisitNumber:
+              local == null || remote.nextVisitNumber > local.nextVisitNumber
+              ? remote.nextVisitNumber
+              : local.nextVisitNumber,
         );
       }
       final candidates = candidatesById.values.toList();
@@ -659,7 +783,10 @@ class _LocalDemoAppState extends State<LocalDemoApp>
               assignedName.toLowerCase()) {
         selected = candidates.single;
       } else if (candidates.isNotEmpty) {
-        final choice = await _chooseParticipantForPhone(screenContext, candidates);
+        final choice = await _chooseParticipantForPhone(
+          screenContext,
+          candidates,
+        );
         if (choice == null) return;
         selected = choice.candidate;
       }
@@ -674,7 +801,11 @@ class _LocalDemoAppState extends State<LocalDemoApp>
       phone: assignedPhone,
     );
     final prior = _records
-        .where((record) => record.participant.studyId == participantNumber)
+        .where(
+          (record) =>
+              record.collector == _collectorCode &&
+              record.participant.studyId == participantNumber,
+        )
         .toList();
     if (prior.isNotEmpty) {
       final previous = prior.last.participant;
@@ -705,7 +836,8 @@ class _LocalDemoAppState extends State<LocalDemoApp>
     }
 
     if (cloud == null && prior.isNotEmpty) {
-      visitNumber = prior.fold<int>(
+      visitNumber =
+          prior.fold<int>(
             0,
             (max, record) =>
                 record.visitNumber > max ? record.visitNumber : max,
@@ -722,8 +854,13 @@ class _LocalDemoAppState extends State<LocalDemoApp>
           visitId: allocatedVisitId,
           onSync: _syncRecord,
           onPersist: _persistSubmittedRecord,
-          onLookupPriorRecords: (studyId) =>
-              _records.where((r) => r.participant.studyId == studyId).toList(),
+          onLookupPriorRecords: (studyId) => _records
+              .where(
+                (r) =>
+                    r.collector == _collectorCode &&
+                    r.participant.studyId == studyId,
+              )
+              .toList(),
         ),
       ),
     );
@@ -769,10 +906,8 @@ class _LocalDemoAppState extends State<LocalDemoApp>
           child: const Text('Cancel'),
         ),
         TextButton(
-          onPressed: () => Navigator.pop(
-            dialogContext,
-            const _ParticipantSelection(null),
-          ),
+          onPressed: () =>
+              Navigator.pop(dialogContext, const _ParticipantSelection(null)),
           child: const Text('New participant'),
         ),
       ],
@@ -786,6 +921,21 @@ class _LocalDemoAppState extends State<LocalDemoApp>
 
   String _nextParticipantNumber() {
     final collectorNum = _collectorNumber();
+    if (_genericRelease) {
+      final random = Random.secure();
+      String candidate;
+      do {
+        final upper = 10000000 + random.nextInt(90000000);
+        final lower = random.nextInt(100000000);
+        candidate = formatCollectorParticipantStudyId(
+          collectorNum,
+          upper * 100000000 + lower,
+        );
+      } while (_records.any(
+        (record) => record.participant.studyId == candidate,
+      ));
+      return candidate;
+    }
     final prefix = collectorParticipantPrefix(collectorNum);
     var maxSeq = 0;
     for (final record in _records) {
@@ -870,6 +1020,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
     final pending = _records
         .where(
           (record) =>
+              record.collector == _collectorCode &&
               !record.syncConflict &&
               (record.syncState == ui.SyncState.pending ||
                   (!onlyPending && record.syncState == ui.SyncState.failed)),
@@ -892,6 +1043,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
               : ui.SyncState.pending;
           break;
         }
+        if (!_isSignedIn) break;
       }
     } finally {
       if (mounted) setState(() => _isRetrying = false);
@@ -918,8 +1070,9 @@ class _LocalDemoAppState extends State<LocalDemoApp>
       return;
     }
     try {
-      final syncPayload =
-          record.toVisitRecordJson(syncState: ui.SyncState.synced);
+      final syncPayload = record.toVisitRecordJson(
+        syncState: ui.SyncState.synced,
+      );
       SyncResponse response;
       if (_syncGateway is HttpLocalRecordSyncClient) {
         response = await _syncGateway.sendRecordDetailed(syncPayload);
@@ -950,16 +1103,28 @@ class _LocalDemoAppState extends State<LocalDemoApp>
               : ui.SyncState.pending;
         case LocalRecordSyncResult.failed:
           record.syncState = ui.SyncState.failed;
+          if (_genericRelease &&
+              response.statusCode == HttpStatus.unauthorized) {
+            await _clearLocalSession();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'This collector number signed in on another phone. Sign in again here to take over.',
+                  ),
+                ),
+              );
+            }
+          }
         case LocalRecordSyncResult.conflict:
           record.syncState = ui.SyncState.failed;
           record.syncConflict = true;
           final lastResp = _syncGateway.lastResponse;
-          record.conflictId = response.conflictId ??
+          record.conflictId =
+              response.conflictId ??
               lastResp?.conflictId ??
               'CONFLICT-${record.id}';
-          record.conflictMessage = response.message ??
-              lastResp?.message ??
-              'HTTP 409 Conflict: A conflicting record already exists on the server.';
+          record.conflictMessage = response.message ?? lastResp?.message ?? 'HTTP 409 Conflict: A conflicting record already exists on the server.';
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -1064,15 +1229,18 @@ class _LocalVisitFlowState extends State<_LocalVisitFlow> {
   }
 
   void _specifyExistingStudyId(String newStudyId, int? visitNum) {
-    final normalizedId = normalizeParticipantStudyId(newStudyId) ?? _normalizeStudyId(newStudyId);
+    final normalizedId =
+        normalizeParticipantStudyId(newStudyId) ??
+        _normalizeStudyId(newStudyId);
     final prior = widget.onLookupPriorRecords?.call(normalizedId) ?? [];
-    final resolvedVisit = visitNum ??
+    final resolvedVisit =
+        visitNum ??
         (prior.isNotEmpty
             ? prior.fold<int>(
-                  0,
-                  (max, r) => r.visitNumber > max ? r.visitNumber : max,
-                ) +
-                1
+                    0,
+                    (max, r) => r.visitNumber > max ? r.visitNumber : max,
+                  ) +
+                  1
             : 2);
     setState(() {
       _participant = ui.ParticipantDraft(
@@ -1155,7 +1323,9 @@ class _LocalVisitFlowState extends State<_LocalVisitFlow> {
   Future<void> _submit() async {
     final now = DateTime.now();
     final record = _LocalRecord(
-      id: widget.visitId ?? 'LOCAL-${now.microsecondsSinceEpoch}',
+      id:
+          widget.visitId ??
+          'LOCAL-${now.microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}',
       participant: _participant,
       visitNumber: _visitNumber,
       collector: widget.collectorCode,
@@ -1230,10 +1400,7 @@ class _ConflictBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.error,
-          width: 1,
-        ),
+        border: Border.all(color: theme.colorScheme.error, width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1339,8 +1506,7 @@ class _LocalVisitConfirmationScreen extends StatelessWidget {
                 final normalized = normalizeParticipantStudyId(text);
                 if (normalized == null || !isValidParticipantStudyId(text)) {
                   setDialogState(() {
-                    errorMessage =
-                        'Invalid Study ID format. Must be like C01-000001 or P001.';
+                    errorMessage = 'Invalid Study ID format. Must be like C01-000001 or P001.';
                   });
                   return;
                 }
@@ -1385,14 +1551,8 @@ class _LocalVisitConfirmationScreen extends StatelessWidget {
                   label: 'Participant number',
                   value: participant.studyId,
                 ),
-                _DetailRow(
-                  label: 'Participant name',
-                  value: participant.name,
-                ),
-                _DetailRow(
-                  label: 'Phone number',
-                  value: participant.phone,
-                ),
+                _DetailRow(label: 'Participant name', value: participant.name),
+                _DetailRow(label: 'Phone number', value: participant.phone),
                 const Divider(height: 32),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -1504,8 +1664,7 @@ class _LocalSubmissionsScreenState extends State<_LocalSubmissionsScreen> {
                 ? const ui.EmptyState(
                     icon: Icons.search_off_outlined,
                     title: 'No matching submissions',
-                    message:
-                        'Try a different search or create a new participant entry.',
+                    message: 'Try a different search or create a new participant entry.',
                   )
                 : ListView.separated(
                     itemCount: visible.length,
@@ -1526,14 +1685,14 @@ class _LocalSubmissionsScreenState extends State<_LocalSubmissionsScreen> {
                               children: [
                                 Text(
                                   item.participant.name,
-                                  style:
-                                      Theme.of(context).textTheme.titleMedium,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium,
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
                                   '${item.participant.studyId} · Visit ${item.visitNumber}',
-                                  style:
-                                      Theme.of(context).textTheme.bodyMedium,
+                                  style: Theme.of(context).textTheme.bodyMedium,
                                 ),
                                 const SizedBox(height: 8),
                                 item.syncConflict
@@ -1662,9 +1821,7 @@ class _LocalSubmissionDetailScreenState
           ),
           if (isConflicted) ...[
             Card(
-              color: Theme.of(context)
-                  .colorScheme
-                  .errorContainer
+              color: Theme.of(context).colorScheme.errorContainer
                   .withValues(alpha: 0.3),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -1702,12 +1859,12 @@ class _LocalSubmissionDetailScreenState
                     Text(
                       record.conflictMessage != null
                           ? 'HTTP 409 Conflict: ${record.conflictMessage}\n\n'
-                              'Conflict Reference: ${record.conflictId ?? record.id}\n'
-                              'Your data is safely preserved on this device and will NOT be overwritten or discarded. '
-                              'Automatic sync is paused for this record until you review and manually retry.'
+                                'Conflict Reference: ${record.conflictId ?? record.id}\n'
+                                'Your data is safely preserved on this device and will NOT be overwritten or discarded. '
+                                'Automatic sync is paused for this record until you review and manually retry.'
                           : 'HTTP 409 Conflict: This record conflicts with an existing entry on the server. '
-                              'Your data is safely preserved on this device and will NOT be overwritten or discarded. '
-                              'Automatic sync is paused for this record until you review and manually retry.',
+                                'Your data is safely preserved on this device and will NOT be overwritten or discarded. '
+                                'Automatic sync is paused for this record until you review and manually retry.',
                       style: const TextStyle(fontSize: 14),
                     ),
                     const SizedBox(height: 16),
@@ -1756,18 +1913,9 @@ class _LocalSubmissionDetailScreenState
                   _DetailLine('Submission ID', record.id),
                   if (record.conflictId != null)
                     _DetailLine('Conflict Ref', record.conflictId!),
-                  _DetailLine(
-                    'Recorded',
-                    '${record.submittedAt.toLocal()}',
-                  ),
-                  _DetailLine(
-                    'Study ID',
-                    record.participant.studyId,
-                  ),
-                  _DetailLine(
-                    'Phone number',
-                    record.participant.phone,
-                  ),
+                  _DetailLine('Recorded', '${record.submittedAt.toLocal()}'),
+                  _DetailLine('Study ID', record.participant.studyId),
+                  _DetailLine('Phone number', record.participant.phone),
                   const Divider(height: 32),
                   Wrap(
                     alignment: WrapAlignment.spaceBetween,

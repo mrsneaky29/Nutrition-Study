@@ -49,11 +49,13 @@ class AccessKeys {
     required this.collectorKeys,
     required this.admin,
     this.collectorIdentities = const {},
+    this.requireCollectorSession = false,
   });
 
   final Set<String> collectorKeys;
   final String admin;
   final Map<String, String> collectorIdentities;
+  final bool requireCollectorSession;
 
   String get collector => collectorKeys.first;
 
@@ -135,6 +137,7 @@ class AccessKeys {
         collectorKeys: collectorKeys,
         admin: admin,
         collectorIdentities: collectorIdentities,
+        requireCollectorSession: true,
       );
     }
 
@@ -218,6 +221,42 @@ Future<void> handleRequest(
     }
 
     final segments = request.uri.pathSegments;
+    if (request.method == 'POST' &&
+        segments.length == 2 &&
+        segments[0] == 'collector' &&
+        segments[1] == 'session') {
+      if (!isCollector) {
+        throw const ApiException(
+          HttpStatus.forbidden,
+          'Collector access required.',
+        );
+      }
+      final identity = accessKeys.collectorIdForKey(suppliedKey)!;
+      final payload = await _readJsonObject(request);
+      if (payload['collectorId'] != identity) {
+        throw const ApiException(
+          HttpStatus.forbidden,
+          'Collector number does not match the access key.',
+        );
+      }
+      final token = await store.openCollectorSession(identity);
+      await _writeJson(request.response, HttpStatus.ok, {
+        'collectorId': identity,
+        'sessionToken': token,
+      });
+      return;
+    }
+    if (isCollector && accessKeys.requireCollectorSession && !isAdmin) {
+      final identity = accessKeys.collectorIdForKey(suppliedKey)!;
+      final token = request.headers.value('x-local-session');
+      if (!store.isCurrentCollectorSession(identity, token)) {
+        throw const ApiException(
+          HttpStatus.unauthorized,
+          'Collector session expired. Sign in again on this phone.',
+          errorName: 'collector_session_expired',
+        );
+      }
+    }
     if (request.method == 'GET' &&
         segments.length == 1 &&
         segments.single == 'health') {
@@ -281,6 +320,9 @@ Future<void> handleRequest(
       final record = await store.upsertCollector(
         payload,
         authenticatedCollectorId: authenticatedCollectorId,
+        collectorSessionToken: accessKeys.requireCollectorSession
+            ? request.headers.value('x-local-session')
+            : null,
       );
       await _writeJson(request.response, HttpStatus.ok, record);
       return;
@@ -384,7 +426,7 @@ void _addCorsHeaders(HttpResponse response) {
     )
     ..set(
       HttpHeaders.accessControlAllowHeadersHeader,
-      'Content-Type, X-Local-Sync-Key',
+      'Content-Type, X-Local-Sync-Key, X-Local-Session',
     )
     ..set(HttpHeaders.accessControlMaxAgeHeader, '600');
 }
@@ -472,6 +514,13 @@ class ApiException implements Exception {
       '${errorName != null ? ', errorName: $errorName' : ''})';
 }
 
+class DuplicateStoredRecordIdException implements Exception {
+  const DuplicateStoredRecordIdException();
+
+  @override
+  String toString() => 'Stored records contain duplicate record IDs.';
+}
+
 /// Dependency-free persistence and validation for the canonical VisitRecord JSON
 /// shape. The web admin page is expected to use PUT and archive endpoints; this
 /// local service provides no identity provider or role authentication.
@@ -489,6 +538,12 @@ class LocalRecordStore {
       ),
       _backupConflictsFile = File(
         '${dataDirectory.path}${Platform.pathSeparator}conflicts.json.bak',
+      ),
+      _collectorSessionsFile = File(
+        '${dataDirectory.path}${Platform.pathSeparator}collector_sessions.json',
+      ),
+      _backupCollectorSessionsFile = File(
+        '${dataDirectory.path}${Platform.pathSeparator}collector_sessions.json.bak',
       );
 
   final Directory _dataDirectory;
@@ -496,8 +551,11 @@ class LocalRecordStore {
   final File _backupFile;
   final File conflictsFile;
   final File _backupConflictsFile;
+  final File _collectorSessionsFile;
+  final File _backupCollectorSessionsFile;
   final Map<String, Map<String, dynamic>> _records = {};
   final Map<String, Map<String, dynamic>> _conflicts = {};
+  final Map<String, String> _collectorSessions = {};
   Future<void> _writeTail = Future<void>.value();
   bool _primaryWasCorrupt = false;
   bool _primaryConflictsWasCorrupt = false;
@@ -522,13 +580,82 @@ class LocalRecordStore {
     }
     await _loadRecords();
     await _loadConflicts();
+    // Session state is authorization state, not participant data. If a power
+    // loss left only the previous .bak, or if the primary is corrupt, require
+    // everyone to sign in again instead of reviving a superseded phone token.
+    if (await _collectorSessionsFile.exists()) {
+      try {
+        final decoded = jsonDecode(await _collectorSessionsFile.readAsString());
+        if (decoded is! Map<String, dynamic> ||
+            decoded.values.any((value) => value is! String || value.isEmpty)) {
+          throw const FormatException('collector_sessions.json is invalid.');
+        }
+        _collectorSessions.addAll(decoded.cast<String, String>());
+      } on FileSystemException {
+        _collectorSessions.clear();
+      } on FormatException {
+        _collectorSessions.clear();
+      } on TypeError {
+        _collectorSessions.clear();
+      }
+    }
   }
+
+  bool isCurrentCollectorSession(String collectorId, String? token) =>
+      token != null &&
+      token.isNotEmpty &&
+      _collectorSessions[collectorId] == token;
+
+  Future<String> openCollectorSession(
+    String collectorId,
+  ) => _serialize(() async {
+    final bytes = List<int>.generate(32, (_) => _random.nextInt(256));
+    final token = base64Url.encode(bytes);
+    final previous = _collectorSessions[collectorId];
+    _collectorSessions[collectorId] = token;
+    try {
+      final temporary = File(
+        '${_collectorSessionsFile.path}.tmp-$pid-${_random.nextInt(1 << 32)}',
+      );
+      await temporary.writeAsString(
+        jsonEncode(_collectorSessions),
+        flush: true,
+      );
+      try {
+        if (await _collectorSessionsFile.exists()) {
+          await _collectorSessionsFile.copy(_backupCollectorSessionsFile.path);
+          await _collectorSessionsFile.delete();
+        }
+        await temporary.rename(_collectorSessionsFile.path);
+      } catch (_) {
+        if (!await _collectorSessionsFile.exists() &&
+            await _backupCollectorSessionsFile.exists()) {
+          await _backupCollectorSessionsFile.copy(_collectorSessionsFile.path);
+        }
+        rethrow;
+      } finally {
+        if (await temporary.exists()) await temporary.delete();
+      }
+      return token;
+    } catch (_) {
+      if (previous == null) {
+        _collectorSessions.remove(collectorId);
+      } else {
+        _collectorSessions[collectorId] = previous;
+      }
+      rethrow;
+    }
+  });
 
   Future<void> _loadRecords() async {
     if (await recordsFile.exists()) {
       try {
         _records.addAll(await _readStoredRecords(recordsFile));
         return;
+      } on DuplicateStoredRecordIdException {
+        // Duplicate IDs are ambiguous canonical data, not a torn write. Do not
+        // serve an older snapshot or allow a later write to replace the file.
+        rethrow;
       } catch (error) {
         if (!await _backupFile.exists()) rethrow;
         _primaryWasCorrupt = true;
@@ -582,7 +709,11 @@ class LocalRecordStore {
         throw const FormatException('Stored record must be a JSON object.');
       }
       final record = _normalizeRecord(Map<String, dynamic>.from(value));
-      loaded[record['id'] as String] = record;
+      final id = record['id'] as String;
+      if (loaded.containsKey(id)) {
+        throw const DuplicateStoredRecordIdException();
+      }
+      loaded[id] = record;
     }
     return loaded;
   }
@@ -915,8 +1046,24 @@ class LocalRecordStore {
   Future<Map<String, dynamic>> upsertCollector(
     Map<String, dynamic> incoming, {
     String? authenticatedCollectorId,
+    String? collectorSessionToken,
   }) {
     return _serialize(() async {
+      // A newer login may have completed while this request body was arriving
+      // or while the upload waited behind another store write. Check again at
+      // the serialized write point so the accepted upload order is unambiguous.
+      if (collectorSessionToken != null &&
+          (authenticatedCollectorId == null ||
+              !isCurrentCollectorSession(
+                authenticatedCollectorId,
+                collectorSessionToken,
+              ))) {
+        throw const ApiException(
+          HttpStatus.unauthorized,
+          'Collector session expired. Sign in again on this phone.',
+          errorName: 'collector_session_expired',
+        );
+      }
       // Check if this record was previously conflicted and has now been resolved
       final incomingKey = incoming['idempotencyKey'] as String?;
       final incomingId = incoming['id'] as String?;

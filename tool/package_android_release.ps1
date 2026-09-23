@@ -33,11 +33,8 @@ if ($BuildName -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
 }
 $hasUrl = -not [string]::IsNullOrWhiteSpace($LocalApiBaseUrl)
 $hasKey = -not [string]::IsNullOrWhiteSpace($CollectorApiKey)
-if ($hasUrl -ne $hasKey) {
-  throw "LocalApiBaseUrl and CollectorApiKey must be supplied together."
-}
-if ($hasKey -and $CollectorApiKey.Length -lt 16) {
-  throw "CollectorApiKey must be at least 16 characters."
+if ($hasKey -or -not [string]::IsNullOrWhiteSpace($CollectorId) -or $CollectorNumber -ne 0) {
+  throw "This release uses one shared APK. Do not embed a collector key or number; collectors enter those when signing in."
 }
 if ($hasUrl) {
   $apiUri = $null
@@ -50,28 +47,7 @@ if ($hasUrl) {
   }
 }
 
-if ($CollectorNumber -lt 0 -or $CollectorNumber -gt 99) {
-  throw "CollectorNumber must be between 0 and 99."
-}
-$CollectorId = $CollectorId.Trim().ToUpperInvariant()
-if ($CollectorNumber -gt 0) {
-  $numberId = "C{0:D3}" -f $CollectorNumber
-  if ($CollectorId -and $CollectorId -ne $numberId) {
-    throw "CollectorId and CollectorNumber must identify the same collector."
-  }
-  $CollectorId = $numberId
-}
-if ($CollectorId -and $CollectorId -notmatch '^C[0-9]{3}$') {
-  throw "CollectorId must use the C001 format."
-}
-if ($CollectorId -and ([int]$CollectorId.Substring(1) -lt 1 -or [int]$CollectorId.Substring(1) -gt 99)) {
-  throw "CollectorId must be between C001 and C099."
-}
-if ($hasUrl -and -not $CollectorId) {
-  throw "A LAN release requires CollectorId or CollectorNumber."
-}
-
-$distributionDirectory = Join-Path $distributionRoot $(if ($CollectorId) { $CollectorId } else { 'unprovisioned' })
+$distributionDirectory = Join-Path $distributionRoot 'shared'
 $artifactBase = "study-collector-$BuildName+$BuildNumber"
 $apkDestination = Join-Path $distributionDirectory "$artifactBase.apk"
 $bundleDestination = Join-Path $distributionDirectory "$artifactBase.aab"
@@ -90,15 +66,9 @@ if (Test-Path -LiteralPath $distributionDirectory) {
   }
 }
 
-$localDefines = @()
+$localDefines = @('--dart-define=LOCAL_GENERIC_RELEASE=true')
 if ($hasUrl) {
-  $localDefines += @(
-    "--dart-define=LOCAL_API_BASE_URL=$LocalApiBaseUrl",
-    "--dart-define=LOCAL_API_KEY=$CollectorApiKey"
-  )
-}
-if (-not [string]::IsNullOrWhiteSpace($CollectorId)) {
-  $localDefines += "--dart-define=LOCAL_COLLECTOR_ID=$CollectorId"
+  $localDefines += "--dart-define=LOCAL_API_BASE_URL=$LocalApiBaseUrl"
 }
 
 Push-Location $projectDirectory

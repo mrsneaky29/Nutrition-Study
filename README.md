@@ -72,15 +72,9 @@ hosted at different addresses:
 powershell -ExecutionPolicy Bypass -File tool/build_web_clients.ps1
 ```
 
-For a LAN-only build using the home-PC record service, supply its URL,
-collector key, and optional collector identity (`-CollectorId C001` or `-CollectorNumber 1`). The admin website asks for its separate key at runtime:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File tool/build_web_clients.ps1 `
-  -LocalApiBaseUrl http://<computer-wifi-ip>:8787 `
-  -CollectorApiKey <collector-key-at-least-16-characters> `
-  -CollectorId C001
-```
+For local previews, run the script without collector-specific parameters. Its
+older optional keyed-build parameters are not part of the shared-APK release
+flow. The separate admin website asks for its key at runtime.
 
 The outputs are `build/collector_web` and `build/admin_web`. The collector build
 is an installable mobile web app. For low-memory local previews, serve either
@@ -114,41 +108,50 @@ Collector credentials bind each bearer key to an explicit collector identity:
 
 #### PowerShell (Windows):
 
+Replace every angle-bracketed value below with a different, privately generated secret before starting the server; the text shown is not a usable credential.
+
 ```powershell
-$env:LOCAL_SYNC_COLLECTOR_KEYS = "C001:collector1-secret-key-12345,C002:collector2-secret-key-67890"
-$env:LOCAL_SYNC_ADMIN_KEY = "admin-secret-management-key-99999"
+$env:LOCAL_SYNC_COLLECTOR_KEYS = "C001:<unique-random-secret-for-collector-1>,C002:<unique-random-secret-for-collector-2>"
+$env:LOCAL_SYNC_ADMIN_KEY = "<unique-random-admin-secret>"
 dart run tool/local_sync_server.dart --host=<computer-wifi-ip> --port=8787
 ```
 
 #### Bash (Linux / macOS):
 
 ```bash
-export LOCAL_SYNC_COLLECTOR_KEYS="C001:collector1-secret-key-12345,C002:collector2-secret-key-67890"
-export LOCAL_SYNC_ADMIN_KEY="admin-secret-management-key-99999"
+export LOCAL_SYNC_COLLECTOR_KEYS="C001:<unique-random-secret-for-collector-1>,C002:<unique-random-secret-for-collector-2>"
+export LOCAL_SYNC_ADMIN_KEY="<unique-random-admin-secret>"
 dart run tool/local_sync_server.dart --host=<computer-wifi-ip> --port=8787
 ```
 
-### Collector Provisioning & Offline Safety
+### Collector Sign-In & Offline Safety
 
-Field phones are provisioned and locked to their collector identity at build time or during first-time setup:
+Install the same collector APK on each phone. On the sign-in screen, a
+collector enters their assigned number (for example, `1`), the home-PC server
+URL, and their access key. These details are not embedded in the APK. A
+successful sign-in on another phone becomes the current session for that
+collector; there is no permanent device binding. The previous phone cannot
+sync under its superseded session. Its unsynced records stay on that phone,
+so recover and sync them before replacing or clearing the device. Explicit
+sign-out clears the saved collector key and session token, not visit records.
 
 ```powershell
-# Collector app (embeds collector upload key and locks collector identity):
-flutter run -d <device-id> -t lib/main.dart `
-  --dart-define=LOCAL_API_BASE_URL=http://<computer-wifi-ip>:8787 `
-  --dart-define=LOCAL_API_KEY=collector1-secret-key-12345 `
-  --dart-define=LOCAL_COLLECTOR_ID=C001
+# Collector app: enter server URL, collector number, and key on screen.
+flutter run -d <device-id> -t lib/main.dart
 
 # Admin web portal (prompts for admin key interactively at runtime in the browser):
 flutter run -d chrome -t lib/admin_main.dart `
   --dart-define=LOCAL_API_BASE_URL=http://<computer-wifi-ip>:8787
 ```
 
-Field staff can collect while offline. Submitted records are saved in Android secure storage. When the configured home-PC endpoint becomes reachable, the app retries pending submissions while it is open and active; the endpoint is not discovered automatically.
+Field staff can collect while offline after setup. Submitted records are saved
+in Android secure storage. When the configured home-PC endpoint becomes
+reachable, the app retries pending submissions while it is open and active;
+the endpoint is not discovered automatically.
 
 ### Participant ID Scheme & Repeat Visits
 
-- **Collector-Scoped Study IDs (No 200 Limit)**: Participant IDs follow the scheme `C01-000001`, `C02-000001`, etc. (collector prefix `C01`..`C99`, sequence starting at `000001` and growing as needed). Different collector numbers avoid cross-collector collisions; do not provision the same number on two independent phones. Legacy `P001` formats remain supported.
+- **Collision-safe Study IDs (No 200 Limit)**: The app generates a new Study ID from the collector prefix and a random 16-digit suffix, such as `C01-4827163094582731`, rather than a per-phone sequence. The same collector can therefore switch phones without suggesting the same next ID. The server still checks for collisions at sync time. Legacy `C01-000001` and `P001` IDs remain valid for existing participants. Study IDs are separate from the simple visit number shown for repeat visits.
 - **Online Repeat-Visit Lookup (`GET /participants/lookup`)**: When the configured server is reachable, collectors can look up participants by phone number to verify study IDs and prior visits.
 - **Offline Repeat Visits**: Verify the participant's prior Study ID using the study's physical records or study card and enter it for Visit 2+. The app does not issue study cards or guarantee correct linking for a mistyped ID.
 
@@ -231,21 +234,33 @@ powershell -ExecutionPolicy Bypass -File tool/package_android_release.ps1 `
   -BuildName 1.0.0 -BuildNumber 1 -SigningBackupConfirmed
 ```
 
-For a LAN-connected collector package, add the home-PC service address,
-collector key, and provisioned collector identity (`-CollectorId C001` or `-CollectorNumber 1`):
+For a LAN-connected collector package, you may include a default home-PC
+service address, but not a collector key or collector identity:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tool/package_android_release.ps1 `
   -BuildName 1.0.0 -BuildNumber 1 `
   -LocalApiBaseUrl http://<computer-wifi-ip>:8787 `
-  -CollectorApiKey <collector-key-at-least-16-characters> `
-  -CollectorId C001 -SigningBackupConfirmed
+  -SigningBackupConfirmed
 ```
 
-The service address, key, and provisioned collector identity are embedded in the APK. A package built with a
-private Wi-Fi address will sync only while the phone can reach that network;
-it is not suitable for public distribution as-is.
+The optional service address is a default, not a device assignment. Collectors
+enter their own number and key at runtime and can change phones by signing in
+on the new phone. A private Wi-Fi service address works only while the phone
+can reach that network; this LAN configuration is not a public-internet sync
+service.
 
-Versioned artifacts and their SHA-256 checksums are written to `dist/android/<collector-id>/` (or `unprovisioned/`). The script refuses to replace prior artifacts. Increase `BuildNumber` for every update to a given collector, and retain the same signing key and application ID. A LAN-keyed App Bundle is not suitable for public Play Store distribution as-is.
+Versioned artifacts and their SHA-256 checksums are written to
+`dist/android/shared/`. The script refuses to replace prior artifacts. Increase
+`BuildNumber` for every update, and retain the same signing key and
+application ID. The same APK can be installed on every collector phone.
 
-For each collector phone, assign a unique collector number, configure its matching server key, and run the packaging command separately with that collector's key. The current collector-number input accepts 1–99; this is not a participant-count limit or a requirement to provision any fixed number of phones. The switch `-SigningBackupConfirmed` is an acknowledgement, not an automated backup check: do not use it until both signing files have been copied off this PC and verified. Do not create or distribute a signed release while the only backup is the ignored directory on this PC.
+Assign collector numbers and matching server keys to people, not phones. Each
+person enters their number and key when signing in; the most recent successful
+sign-in takes over that collector session. The switch
+`-SigningBackupConfirmed` is an acknowledgement, not an automated backup
+check: do not use it until both signing files have been copied off this PC and
+verified. The generic login and collision-safe ID paths have automated tests;
+before real-data distribution, configure the actual home-PC server and admin
+portal, verify an off-PC participant-data backup and restore, and run an
+offline-to-sync trial on more than one physical phone.
