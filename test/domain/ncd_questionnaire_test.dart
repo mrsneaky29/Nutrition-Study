@@ -78,6 +78,62 @@ void main() {
     expect(NcdQuestionnaire.fromMap({...map, 'bpOneDiastolic': 80}), isNull);
   });
 
+  test(
+    'rejects measured blood pressure with diastolic at or above systolic',
+    () {
+      final original = questionnaire.toMap();
+      expect(
+        NcdQuestionnaire.fromMap({...original, 'bpOneSystolic': 80}),
+        isNull,
+      );
+      expect(
+        NcdQuestionnaire.fromMap({...original, 'bpTwoDiastolic': 130}),
+        isNull,
+      );
+
+      final legacy = Map<String, Object?>.from(original)
+        ..remove('schemaVersion');
+      expect(NcdQuestionnaire.fromMap(legacy), isNotNull);
+    },
+  );
+
+  test('rejects non-finite and fractional integer values', () {
+    final original = questionnaire.toMap();
+    for (final value in [double.nan, double.infinity, 120.5]) {
+      expect(
+        NcdQuestionnaire.fromMap({...original, 'bpOneSystolic': value}),
+        isNull,
+      );
+    }
+    expect(
+      NcdQuestionnaire.fromMap({...original, 'bpOneSystolic': 120.0}),
+      isNotNull,
+    );
+    expect(
+      NcdQuestionnaire.fromMap({...original, 'age': 34.5}),
+      isNull,
+    );
+  });
+
+  test(
+    'rejects non-finite decimal values when parsing stored questionnaires',
+    () {
+      final original = questionnaire.toMap();
+      expect(
+        NcdQuestionnaire.fromMap({...original, 'sleepHours': double.nan}),
+        isNull,
+      );
+      expect(
+        NcdQuestionnaire.fromMap({...original, 'heightCm': double.infinity}),
+        isNull,
+      );
+      expect(
+        NcdQuestionnaire.fromMap({...original, 'sleepHours': 'NaN'}),
+        isNull,
+      );
+    },
+  );
+
   test('does not treat incomplete legacy values as a questionnaire', () {
     expect(NcdQuestionnaire.fromMap({'studySite': 'community_clinic'}), isNull);
   });

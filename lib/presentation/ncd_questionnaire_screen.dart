@@ -247,228 +247,234 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
 
   Widget _buildInterview(BuildContext context) => Form(
     key: _interviewKey,
-    child: ListView(
-      children: [
-        const PageHeading(
-          title: 'NCD risk questionnaire',
-          subtitle: 'Interview questions · 1 of 2. Leave sensitive answers blank if the participant declines.',
-        ),
-        _section(context, 'Study and profile', [
-          _select('Study site', _site, const {
-            'community_clinic': 'Community clinic',
-            'community_outreach': 'Community outreach',
-            'other_site': 'Other study site',
-          }, (v) => _setDraft(() => _site = v)),
-          _numberField(_age, 'Age (years)', min: 18, max: 120),
-          _select('Sex', _sex, const {
-            'female': 'Female',
-            'male': 'Male',
-            'other': 'Other',
-          }, (v) => _setDraft(() => _sex = v)),
-          _select('Education level', _education, const {
-            'none': 'No formal schooling',
-            'primary': 'Primary',
-            'secondary': 'Secondary',
-            'higher': 'Higher education',
-          }, (v) => _setDraft(() => _education = v)),
-          _select('Employment/work category', _employment, const {
-            'employed': 'Employed',
-            'self_employed': 'Self-employed',
-            'student': 'Student',
-            'homemaker': 'Homemaker/care work',
-            'unemployed': 'Not currently employed',
-            'retired': 'Retired',
-          }, (v) => _setDraft(() => _employment = v)),
-        ]),
-        _section(context, 'Tobacco and alcohol', [
-          _optionalSelect(
-            'Tobacco use',
-            _tobacco,
-            const {
-              'never': 'Never used',
-              'former': 'Former user',
-              'current': 'Current user',
-            },
-            (v) => _setDraft(() {
-              _tobacco = v;
-              if (v != 'current') {
-                _tobaccoType = null;
-                _tobaccoFrequency = null;
-              }
-            }),
+    child: SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const PageHeading(
+            title: 'NCD risk questionnaire',
+            subtitle: 'Interview questions · 1 of 2. Leave sensitive answers blank if the participant declines.',
           ),
-          if (_tobacco == 'current') ...[
-            _select('Type of tobacco', _tobaccoType, const {
-              'smoked': 'Smoked',
-              'smokeless': 'Smokeless',
-              'both': 'Both',
-            }, (v) => _setDraft(() => _tobaccoType = v)),
-            _select('Tobacco frequency', _tobaccoFrequency, const {
-              'daily': 'Daily',
-              'less_than_daily': 'Less than daily',
-            }, (v) => _setDraft(() => _tobaccoFrequency = v)),
-          ],
-          _optionalSelect(
-            'Alcohol use in the past 30 days',
-            _alcohol,
-            const {'no': 'No', 'yes': 'Yes'},
-            (v) => _setDraft(() {
-              _alcohol = v;
-              if (v != 'yes') _alcoholFrequency = null;
-            }),
-          ),
-          if (_alcohol == 'yes')
-            _select('Alcohol frequency', _alcoholFrequency, const {
-              'less_than_weekly': 'Less than weekly',
-              'one_to_three_weekly': '1–3 days/week',
-              'four_or_more_weekly': '4+ days/week',
-            }, (v) => _setDraft(() => _alcoholFrequency = v)),
-        ]),
-        _section(context, 'Diet, activity and sleep', [
-          const Padding(
-            padding: EdgeInsets.only(bottom: 8),
-            child: Text(
-              'In the past 7 days, how often did the participant have:',
+          _section(context, 'Study and profile', [
+            _select('Study site', _site, const {
+              'community_clinic': 'Community clinic',
+              'community_outreach': 'Community outreach',
+              'other_site': 'Other study site',
+            }, (v) => _setDraft(() => _site = v)),
+            _numberField(_age, 'Age (years)', min: 18, max: 120),
+            _select('Sex', _sex, const {
+              'female': 'Female',
+              'male': 'Male',
+              'other': 'Other',
+            }, (v) => _setDraft(() => _sex = v)),
+            _select('Education level', _education, const {
+              'none': 'No formal schooling',
+              'primary': 'Primary',
+              'secondary': 'Secondary',
+              'higher': 'Higher education',
+            }, (v) => _setDraft(() => _education = v)),
+            _select('Employment/work category', _employment, const {
+              'employed': 'Employed',
+              'self_employed': 'Self-employed',
+              'student': 'Student',
+              'homemaker': 'Homemaker/care work',
+              'unemployed': 'Not currently employed',
+              'retired': 'Retired',
+            }, (v) => _setDraft(() => _employment = v)),
+          ]),
+          _section(context, 'Tobacco and alcohol', [
+            _optionalSelect(
+              'Tobacco use',
+              _tobacco,
+              const {
+                'never': 'Never used',
+                'former': 'Former user',
+                'current': 'Current user',
+              },
+              (v) => _setDraft(() {
+                _tobacco = v;
+                if (v != 'current') {
+                  _tobaccoType = null;
+                  _tobaccoFrequency = null;
+                }
+              }),
             ),
-          ),
-          _select(
-            'Fruit',
-            _fruit,
-            _frequencyOptions,
-            (v) => _setDraft(() => _fruit = v),
-          ),
-          _select(
-            'Vegetables',
-            _vegetables,
-            _frequencyOptions,
-            (v) => _setDraft(() => _vegetables = v),
-          ),
-          _select(
-            'Sugary drinks',
-            _sugaryDrinks,
-            _frequencyOptions,
-            (v) => _setDraft(() => _sugaryDrinks = v),
-          ),
-          _select(
-            'Processed or packaged foods',
-            _processedFood,
-            _frequencyOptions,
-            (v) => _setDraft(() => _processedFood = v),
-          ),
-          _numberField(
-            _activeDays,
-            'Active days per week',
-            max: 7,
-            helper: 'Moderate-or-higher activity',
-          ),
-          _numberField(
-            _activeMinutes,
-            'Usual active minutes per day',
-            max: 1440,
-          ),
-          _decimalField(_sleep, 'Usual sleep hours per night', max: 24),
-        ]),
-        _section(context, 'Known diagnosis', [
-          const Padding(
-            padding: EdgeInsets.only(bottom: 8),
-            child: Text(
-              'Has a doctor or health professional ever told the participant they have:',
+            if (_tobacco == 'current') ...[
+              _select('Type of tobacco', _tobaccoType, const {
+                'smoked': 'Smoked',
+                'smokeless': 'Smokeless',
+                'both': 'Both',
+              }, (v) => _setDraft(() => _tobaccoType = v)),
+              _select('Tobacco frequency', _tobaccoFrequency, const {
+                'daily': 'Daily',
+                'less_than_daily': 'Less than daily',
+              }, (v) => _setDraft(() => _tobaccoFrequency = v)),
+            ],
+            _optionalSelect(
+              'Alcohol use in the past 30 days',
+              _alcohol,
+              const {'no': 'No', 'yes': 'Yes'},
+              (v) => _setDraft(() {
+                _alcohol = v;
+                if (v != 'yes') _alcoholFrequency = null;
+              }),
             ),
+            if (_alcohol == 'yes')
+              _select('Alcohol frequency', _alcoholFrequency, const {
+                'less_than_weekly': 'Less than weekly',
+                'one_to_three_weekly': '1–3 days/week',
+                'four_or_more_weekly': '4+ days/week',
+              }, (v) => _setDraft(() => _alcoholFrequency = v)),
+          ]),
+          _section(context, 'Diet, activity and sleep', [
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                'In the past 7 days, how often did the participant have:',
+              ),
+            ),
+            _select(
+              'Fruit',
+              _fruit,
+              _frequencyOptions,
+              (v) => _setDraft(() => _fruit = v),
+            ),
+            _select(
+              'Vegetables',
+              _vegetables,
+              _frequencyOptions,
+              (v) => _setDraft(() => _vegetables = v),
+            ),
+            _select(
+              'Sugary drinks',
+              _sugaryDrinks,
+              _frequencyOptions,
+              (v) => _setDraft(() => _sugaryDrinks = v),
+            ),
+            _select(
+              'Processed or packaged foods',
+              _processedFood,
+              _frequencyOptions,
+              (v) => _setDraft(() => _processedFood = v),
+            ),
+            _numberField(
+              _activeDays,
+              'Active days per week',
+              max: 7,
+              helper: 'Moderate-or-higher activity',
+            ),
+            _numberField(
+              _activeMinutes,
+              'Usual active minutes per day',
+              max: 1440,
+            ),
+            _decimalField(_sleep, 'Usual sleep hours per night', max: 24),
+          ]),
+          _section(context, 'Known diagnosis', [
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Has a doctor or health professional ever told the participant they have:',
+              ),
+            ),
+            _optionalSelect(
+              'Hypertension',
+              _hypertension,
+              _diagnosisOptions,
+              (v) => _setDraft(() => _hypertension = v),
+            ),
+            _optionalSelect(
+              'Diabetes',
+              _diabetes,
+              _diagnosisOptions,
+              (v) => _setDraft(() => _diabetes = v),
+            ),
+            _optionalSelect(
+              'High cholesterol',
+              _cholesterol,
+              _diagnosisOptions,
+              (v) => _setDraft(() => _cholesterol = v),
+            ),
+            _optionalSelect(
+              'Cardiovascular disease',
+              _cardiovascular,
+              _diagnosisOptions,
+              (v) => _setDraft(() => _cardiovascular = v),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: _next,
+            child: const Text('Continue to measurements'),
           ),
-          _optionalSelect(
-            'Hypertension',
-            _hypertension,
-            _diagnosisOptions,
-            (v) => _setDraft(() => _hypertension = v),
-          ),
-          _optionalSelect(
-            'Diabetes',
-            _diabetes,
-            _diagnosisOptions,
-            (v) => _setDraft(() => _diabetes = v),
-          ),
-          _optionalSelect(
-            'High cholesterol',
-            _cholesterol,
-            _diagnosisOptions,
-            (v) => _setDraft(() => _cholesterol = v),
-          ),
-          _optionalSelect(
-            'Cardiovascular disease',
-            _cardiovascular,
-            _diagnosisOptions,
-            (v) => _setDraft(() => _cardiovascular = v),
-          ),
-        ]),
-        const SizedBox(height: 8),
-        FilledButton(
-          onPressed: _next,
-          child: const Text('Continue to measurements'),
-        ),
-        const SizedBox(height: 32),
-      ],
+          const SizedBox(height: 32),
+        ],
+      ),
     ),
   );
 
   Widget _buildMeasurements(BuildContext context) => Form(
     key: _measurementsKey,
-    child: ListView(
-      children: [
-        const PageHeading(
-          title: 'Physical measurements',
-          subtitle:
-              'Measurements · 2 of 2. Record both blood-pressure readings.',
-        ),
-        _section(context, 'Body measurements', [
-          _measurementDecimal(
-            'Height (cm)',
-            _height,
-            _heightMissingReason,
-            (v) => _setDraft(() => _heightMissingReason = v),
-            min: 50,
-            max: 250,
+    child: SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const PageHeading(
+            title: 'Physical measurements',
+            subtitle:
+                'Measurements · 2 of 2. Record both blood-pressure readings.',
           ),
-          _measurementDecimal(
-            'Weight (kg)',
-            _weight,
-            _weightMissingReason,
-            (v) => _setDraft(() => _weightMissingReason = v),
-            min: 10,
-            max: 350,
+          _section(context, 'Body measurements', [
+            _measurementDecimal(
+              'Height (cm)',
+              _height,
+              _heightMissingReason,
+              (v) => _setDraft(() => _heightMissingReason = v),
+              min: 50,
+              max: 250,
+            ),
+            _measurementDecimal(
+              'Weight (kg)',
+              _weight,
+              _weightMissingReason,
+              (v) => _setDraft(() => _weightMissingReason = v),
+              min: 10,
+              max: 350,
+            ),
+            _measurementDecimal(
+              'Waist circumference (cm)',
+              _waist,
+              _waistMissingReason,
+              (v) => _setDraft(() => _waistMissingReason = v),
+              min: 30,
+              max: 250,
+            ),
+          ]),
+          _section(context, 'Blood pressure', [
+            const Text('Record two seated readings in mmHg.'),
+            const SizedBox(height: 12),
+            _bloodPressureMeasurement(
+              'Reading 1',
+              _bp1s,
+              _bp1d,
+              _bpOneMissingReason,
+              (v) => _setDraft(() => _bpOneMissingReason = v),
+            ),
+            _bloodPressureMeasurement(
+              'Reading 2',
+              _bp2s,
+              _bp2d,
+              _bpTwoMissingReason,
+              (v) => _setDraft(() => _bpTwoMissingReason = v),
+            ),
+          ]),
+          FilledButton(
+            onPressed: _complete,
+            child: const Text('Review questionnaire'),
           ),
-          _measurementDecimal(
-            'Waist circumference (cm)',
-            _waist,
-            _waistMissingReason,
-            (v) => _setDraft(() => _waistMissingReason = v),
-            min: 30,
-            max: 250,
-          ),
-        ]),
-        _section(context, 'Blood pressure', [
-          const Text('Record two seated readings in mmHg.'),
-          const SizedBox(height: 12),
-          _bloodPressureMeasurement(
-            'Reading 1',
-            _bp1s,
-            _bp1d,
-            _bpOneMissingReason,
-            (v) => _setDraft(() => _bpOneMissingReason = v),
-          ),
-          _bloodPressureMeasurement(
-            'Reading 2',
-            _bp2s,
-            _bp2d,
-            _bpTwoMissingReason,
-            (v) => _setDraft(() => _bpTwoMissingReason = v),
-          ),
-        ]),
-        FilledButton(
-          onPressed: _complete,
-          child: const Text('Review questionnaire'),
-        ),
-        const SizedBox(height: 32),
-      ],
+          const SizedBox(height: 32),
+        ],
+      ),
     ),
   );
 
@@ -539,6 +545,15 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
                 '$label systolic',
                 min: 50,
                 max: 300,
+                additionalValidator: (value) {
+                  final systolicValue = int.tryParse(value ?? '');
+                  final diastolicValue = int.tryParse(diastolic.text);
+                  return systolicValue != null &&
+                          diastolicValue != null &&
+                          systolicValue <= diastolicValue
+                      ? 'Systolic must be greater than diastolic.'
+                      : null;
+                },
               ),
             ),
             const SizedBox(width: 12),
@@ -613,6 +628,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
     int min = 0,
     int? max,
     String? helper,
+    String? Function(String?)? additionalValidator,
   }) => Padding(
     padding: const EdgeInsets.only(bottom: 16),
     child: TextFormField(
@@ -622,9 +638,10 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
       decoration: InputDecoration(labelText: label, helperText: helper),
       validator: (v) {
         final n = int.tryParse(v ?? '');
-        return n == null || n < min || (max != null && n > max)
-            ? 'Enter a value${max == null ? '' : ' from $min to $max'}.'
-            : null;
+        if (n == null || n < min || (max != null && n > max)) {
+          return 'Enter a value${max == null ? '' : ' from $min to $max'}.';
+        }
+        return additionalValidator?.call(v);
       },
     ),
   );
@@ -641,8 +658,8 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
       decoration: InputDecoration(labelText: label),
       validator: (v) {
         final n = double.tryParse(v ?? '');
-        return n == null || n < min || (max != null && n > max)
-            ? 'Enter a value${max == null ? '' : ' from $min to $max'}.'
+        return n == null || !n.isFinite || n < min || (max != null && n > max)
+            ? 'Enter a value${max == null ? '' : ' from ${min.toStringAsFixed(0)} to ${max.toStringAsFixed(0)}'}.'
             : null;
       },
     ),

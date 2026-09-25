@@ -249,12 +249,24 @@ class NcdQuestionnaire {
       json[key] is String && (json[key] as String).isNotEmpty
       ? json[key] as String
       : null;
-  static int _integer(Map<String, Object?> json, String key) =>
-      json[key] is num ? (json[key] as num).toInt() : int.parse('${json[key]}');
+  static int _integer(Map<String, Object?> json, String key) {
+    final value = json[key];
+    if (value is! num) return int.parse('$value');
+    if (!value.isFinite || value != value.truncateToDouble()) {
+      throw FormatException('Invalid $key.');
+    }
+    return value.toInt();
+  }
   static double _number(Map<String, Object?> json, String key) =>
-      json[key] is num
-      ? (json[key] as num).toDouble()
-      : double.parse('${json[key]}');
+      _finiteNumber(
+        json[key] is num
+            ? (json[key] as num).toDouble()
+            : double.parse('${json[key]}'),
+        key,
+      );
+  static double _finiteNumber(double value, String key) => value.isFinite
+      ? value
+      : throw FormatException('Invalid $key.');
   static bool _validMissingReason(String? value) =>
       value == 'declined' || value == 'unable';
   static double? _measurementNumber(
@@ -298,7 +310,7 @@ class NcdQuestionnaire {
     }
     final systolic = _integer(json, systolicKey);
     final diastolic = _integer(json, diastolicKey);
-    if (systolic <= 0 || diastolic <= 0) {
+    if (systolic <= 0 || diastolic <= 0 || systolic <= diastolic) {
       throw FormatException('Invalid $systolicKey/$diastolicKey.');
     }
     return (systolic, diastolic);
