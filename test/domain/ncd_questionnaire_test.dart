@@ -3,25 +3,79 @@ import 'package:project2/domain/ncd_questionnaire.dart';
 
 void main() {
   const questionnaire = NcdQuestionnaire(
-    studySite: 'community_clinic', age: 34, sex: 'female',
-    education: 'secondary', employment: 'employed',
-    fruitFrequency: 'daily', vegetableFrequency: 'daily',
+    studySite: 'community_clinic',
+    age: 34,
+    sex: 'female',
+    education: 'secondary',
+    employment: 'employed',
+    fruitFrequency: 'daily',
+    vegetableFrequency: 'daily',
     sugaryDrinkFrequency: 'one_to_two_days',
-    processedFoodFrequency: 'never', activeDaysPerWeek: 5,
-    activeMinutesPerDay: 30, sleepHours: 7.5, heightCm: 160,
-    weightKg: 64, waistCm: 82, bpOneSystolic: 120,
-    bpOneDiastolic: 80, bpTwoSystolic: 124, bpTwoDiastolic: 78,
+    processedFoodFrequency: 'never',
+    activeDaysPerWeek: 5,
+    activeMinutesPerDay: 30,
+    sleepHours: 7.5,
+    heightCm: 160,
+    weightKg: 64,
+    waistCm: 82,
+    bpOneSystolic: 120,
+    bpOneDiastolic: 80,
+    bpTwoSystolic: 124,
+    bpTwoDiastolic: 78,
   );
 
-  test('calculates values from raw measurements and round-trips coded values', () {
-    expect(questionnaire.weeklyActiveMinutes, 150);
-    expect(questionnaire.bmi, closeTo(25, 0.001));
-    expect(questionnaire.averageSystolic, 122);
-    expect(questionnaire.averageDiastolic, 79);
-    final restored = NcdQuestionnaire.fromMap(questionnaire.toMap());
-    expect(restored?.studySite, 'community_clinic');
-    expect(restored?.tobaccoUse, isNull);
-    expect(restored?.toCsvRow()['ncd_weekly_active_minutes'], '150');
+  test(
+    'calculates values from raw measurements and round-trips coded values',
+    () {
+      expect(questionnaire.weeklyActiveMinutes, 150);
+      expect(questionnaire.bmi, closeTo(25, 0.001));
+      expect(questionnaire.averageSystolic, 122);
+      expect(questionnaire.averageDiastolic, 79);
+      final restored = NcdQuestionnaire.fromMap(questionnaire.toMap());
+      expect(restored?.studySite, 'community_clinic');
+      expect(restored?.tobaccoUse, isNull);
+      expect(restored?.toCsvRow()['ncd_weekly_active_minutes'], '150');
+      expect(restored?.toCsvRow()['ncd_schema_version'], '2');
+    },
+  );
+
+  test(
+    'accepts pre-versioned records but rejects an unknown future schema',
+    () {
+      final original = questionnaire.toMap();
+      expect(original['schemaVersion'], NcdQuestionnaire.schemaVersion);
+      final legacy = Map<String, Object?>.from(original)
+        ..remove('schemaVersion');
+      expect(NcdQuestionnaire.fromMap(legacy), isNotNull);
+      expect(
+        NcdQuestionnaire.fromMap({...original, 'schemaVersion': 3}),
+        isNull,
+      );
+    },
+  );
+
+  test('missing measurements carry reasons and leave derived values blank', () {
+    final map = {
+      ...questionnaire.toMap(),
+      'heightCm': null,
+      'heightMissingReason': 'unable',
+      'bpOneSystolic': null,
+      'bpOneDiastolic': null,
+      'bpOneMissingReason': 'declined',
+    };
+    final restored = NcdQuestionnaire.fromMap(map);
+    expect(restored, isNotNull);
+    expect(restored?.bmi, isNull);
+    expect(restored?.averageSystolic, isNull);
+    expect(restored?.averageDiastolic, isNull);
+    expect(restored?.toCsvRow()['ncd_bmi'], '');
+    expect(restored?.toCsvRow()['ncd_height_missing_reason'], 'unable');
+    expect(restored?.toCsvRow()['ncd_bp_one_missing_reason'], 'declined');
+    expect(
+      NcdQuestionnaire.fromMap({...map, 'heightMissingReason': null}),
+      isNull,
+    );
+    expect(NcdQuestionnaire.fromMap({...map, 'bpOneDiastolic': 80}), isNull);
   });
 
   test('does not treat incomplete legacy values as a questionnaire', () {

@@ -69,7 +69,5 @@ class ParticipantProfile {
 
   Map<String, String> toCsvRow() => {
     'participant_study_id': studyId,
-    'participant_name': name,
-    'participant_indian_phone': indianPhone,
   };
 }

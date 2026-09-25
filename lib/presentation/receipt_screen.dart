@@ -51,11 +51,15 @@ class ReceiptScreen extends StatelessWidget {
                 if (questionnaire case final values?) ...[
                   _ReceiptRow(
                     label: 'BMI',
-                    value: values.bmi.toStringAsFixed(1),
+                    value: values.bmi?.toStringAsFixed(1) ?? 'Not calculated',
                   ),
                   _ReceiptRow(
                     label: 'Average blood pressure',
-                    value: '${values.averageSystolic.toStringAsFixed(0)} / ${values.averageDiastolic.toStringAsFixed(0)} mmHg',
+                    value:
+                        values.averageSystolic == null ||
+                            values.averageDiastolic == null
+                        ? 'Not calculated'
+                        : '${values.averageSystolic!.toStringAsFixed(0)} / ${values.averageDiastolic!.toStringAsFixed(0)} mmHg',
                   ),
                 ],
                 const Divider(height: 32),

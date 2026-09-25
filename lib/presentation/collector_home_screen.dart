@@ -10,6 +10,9 @@ class CollectorHomeScreen extends StatelessWidget {
     this.pendingCount = 0,
     this.recentSubmissions = const [],
     this.onStartEntry,
+    this.savedVisitDraftCount = 0,
+    this.draftRecoveryWarning,
+    this.onResumeSavedVisit,
     this.onOpenSubmissions,
     this.onOpenSubmission,
     this.onRetryPending,
@@ -22,6 +25,9 @@ class CollectorHomeScreen extends StatelessWidget {
   final int pendingCount;
   final List<SubmissionSummary> recentSubmissions;
   final VoidCallback? onStartEntry;
+  final int savedVisitDraftCount;
+  final String? draftRecoveryWarning;
+  final VoidCallback? onResumeSavedVisit;
   final VoidCallback? onOpenSubmissions;
   final ValueChanged<SubmissionSummary>? onOpenSubmission;
   final Future<void> Function()? onRetryPending;
@@ -71,6 +77,17 @@ class CollectorHomeScreen extends StatelessWidget {
           title: 'Hello, $collectorName',
           subtitle: 'Start a visit or return to one of your saved submissions.',
         ),
+        if (draftRecoveryWarning != null) ...[
+          Card(
+            color: Theme.of(context).colorScheme.errorContainer,
+            child: ListTile(
+              leading: const Icon(Icons.warning_amber_rounded),
+              title: const Text('Some saved visits need attention'),
+              subtitle: Text(draftRecoveryWarning!),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         Row(
           children: [
             Expanded(
@@ -90,6 +107,22 @@ class CollectorHomeScreen extends StatelessWidget {
             ),
           ],
         ),
+        if (savedVisitDraftCount > 0) ...[
+          const SizedBox(height: 16),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.edit_note),
+              title: Text(
+                savedVisitDraftCount == 1
+                    ? 'In-progress visit saved'
+                    : '$savedVisitDraftCount in-progress visits saved',
+              ),
+              subtitle: const Text('Continue where you left off.'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: onResumeSavedVisit,
+            ),
+          ),
+        ],
         const SizedBox(height: 32),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,

@@ -70,6 +70,50 @@ void main() {
       },
     );
 
+    test('finishes conflict resolution after restart when the record was already saved', () async {
+      await store.upsertCollector(_submission());
+      final rejected = _submission(
+        id: 'visit-2',
+        key: 'upload-visit-2',
+        studyId: 'P001',
+        phone: '+919000000099',
+      );
+      await _expectConflict(
+        store.upsertCollector(rejected),
+        conflictType: 'participant_mismatch',
+      );
+      final conflictId = store.conflicts().single['id'] as String;
+
+      // Model a restart after records.json committed but before
+      // conflicts.json recorded the resolution.
+      final acceptedAfterCrash =
+          Map<String, dynamic>.from(
+              store.conflicts().single['rejectedRecord'] as Map,
+            )
+            ..['participant'] = {
+              ...(rejected['participant'] as Map<String, dynamic>),
+              'studyId': 'P002',
+            }
+            ..['createdAt'] = '2026-09-13T00:00:00.000Z'
+            ..['updatedAt'] = '2026-09-13T00:00:00.000Z'
+            ..['revision'] = 1
+            ..['syncState'] = 'synced';
+      await store.recordsFile.writeAsString(
+        jsonEncode([...store.records(), acceptedAfterCrash]),
+        flush: true,
+      );
+
+      final restarted = LocalRecordStore(dataDirectory);
+      await restarted.load();
+      final resolved = await restarted.resolveConflict(conflictId, {
+        'studyId': 'P002',
+      });
+
+      expect(resolved['status'], 'resolved');
+      expect(resolved['acceptedRecordId'], 'visit-2');
+      expect(restarted.length, 2);
+    });
+
     test(
       'resolving reused upload key keeps accepted records distinct',
       () async {
@@ -111,6 +155,94 @@ void main() {
         await reloaded.load();
         expect(reloaded.records(), hasLength(1));
         expect(reloaded.records().single['id'], 'visit-1');
+      },
+    );
+
+    test('accepts legacy and v1 full-numeric questionnaires', () async {
+      await store.upsertCollector(
+        _submission(
+          id: 'legacy-questionnaire',
+          key: 'legacy-questionnaire-key',
+          questionnaire: _validQuestionnaire(),
+        ),
+      );
+      await store.upsertCollector(
+        _submission(
+          id: 'v1-questionnaire',
+          key: 'v1-questionnaire-key',
+          studyId: 'P002',
+          phone: '+919000000002',
+          questionnaire: {..._validQuestionnaire(), 'schemaVersion': 1},
+        ),
+      );
+
+      expect(store.length, 2);
+    });
+
+    test(
+      'accepts schema v2 missing measurements with reasons and null summaries',
+      () async {
+        final questionnaire = _validQuestionnaireV2()
+          ..['heightCm'] = null
+          ..['heightMissingReason'] = 'unable'
+          ..['weightKg'] = null
+          ..['weightMissingReason'] = 'declined'
+          ..['bpOneSystolic'] = null
+          ..['bpOneDiastolic'] = null
+          ..['bpOneMissingReason'] = 'unable'
+          ..['bmi'] = null
+          ..['averageSystolic'] = null
+          ..['averageDiastolic'] = null;
+
+        final accepted = await store.upsertCollector(
+          _submission(questionnaire: questionnaire),
+        );
+
+        expect(accepted['questionnaire']['heightCm'], isNull);
+        expect(accepted['questionnaire']['heightMissingReason'], 'unable');
+        expect(accepted['questionnaire']['bmi'], isNull);
+        expect(accepted['questionnaire']['averageSystolic'], isNull);
+      },
+    );
+
+    test(
+      'rejects schema v2 missing measurements without valid paired reasons',
+      () async {
+        final missingReason = _validQuestionnaireV2()
+          ..['heightCm'] = null
+          ..['heightMissingReason'] = null
+          ..['bmi'] = null;
+        await _expectBadRequest(
+          store.upsertCollector(_submission(questionnaire: missingReason)),
+        );
+
+        final partialBloodPressure = _validQuestionnaireV2()
+          ..['bpOneSystolic'] = null
+          ..['bpOneMissingReason'] = 'declined'
+          ..['averageSystolic'] = null
+          ..['averageDiastolic'] = null;
+        await _expectBadRequest(
+          store.upsertCollector(
+            _submission(
+              id: 'partial-bp',
+              key: 'partial-bp-key',
+              questionnaire: partialBloodPressure,
+            ),
+          ),
+        );
+
+        final staleSummary = _validQuestionnaireV2()
+          ..['heightCm'] = null
+          ..['heightMissingReason'] = 'declined';
+        await _expectBadRequest(
+          store.upsertCollector(
+            _submission(
+              id: 'stale-summary',
+              key: 'stale-summary-key',
+              questionnaire: staleSummary,
+            ),
+          ),
+        );
       },
     );
 
@@ -1524,6 +1656,19 @@ Future<void> _expectConflict(
   );
 }
 
+Future<void> _expectBadRequest(Future<Object?> operation) async {
+  await expectLater(
+    operation,
+    throwsA(
+      isA<ApiException>().having(
+        (exception) => exception.statusCode,
+        'statusCode',
+        HttpStatus.badRequest,
+      ),
+    ),
+  );
+}
+
 Map<String, dynamic> _validQuestionnaire({num age = 30}) => {
   'studySite': 'Site A',
   'sex': 'female',
@@ -1548,6 +1693,16 @@ Map<String, dynamic> _validQuestionnaire({num age = 30}) => {
   'bmi': 68 / (1.7 * 1.7),
   'averageSystolic': 120,
   'averageDiastolic': 80,
+};
+
+Map<String, dynamic> _validQuestionnaireV2({num age = 30}) => {
+  ..._validQuestionnaire(age: age),
+  'schemaVersion': 2,
+  'heightMissingReason': null,
+  'weightMissingReason': null,
+  'waistMissingReason': null,
+  'bpOneMissingReason': null,
+  'bpTwoMissingReason': null,
 };
 
 Map<String, dynamic> _submission({

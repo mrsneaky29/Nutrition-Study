@@ -50,15 +50,65 @@ class ReviewScreen extends StatelessWidget {
           title: 'Questionnaire',
           children: [
             _ReviewLine('Visit number', '$visitNumber'),
-            _ReviewLine('Study site', questionnaire?.studySite ?? 'Not recorded'),
-            _ReviewLine('Height', questionnaire == null ? 'Not recorded' : '${questionnaire!.heightCm} cm'),
-            _ReviewLine('Weight', questionnaire == null ? 'Not recorded' : '${questionnaire!.weightKg} kg'),
-            _ReviewLine('Waist', questionnaire == null ? 'Not recorded' : '${questionnaire!.waistCm} cm'),
-            _ReviewLine('BMI', questionnaire == null ? 'Not recorded' : questionnaire!.bmi.toStringAsFixed(1)),
-            _ReviewLine('BP reading 1', questionnaire == null ? 'Not recorded' : '${questionnaire!.bpOneSystolic} / ${questionnaire!.bpOneDiastolic} mmHg'),
-            _ReviewLine('BP reading 2', questionnaire == null ? 'Not recorded' : '${questionnaire!.bpTwoSystolic} / ${questionnaire!.bpTwoDiastolic} mmHg'),
-            _ReviewLine('Average blood pressure', questionnaire == null ? 'Not recorded' : '${questionnaire!.averageSystolic.toStringAsFixed(0)} / ${questionnaire!.averageDiastolic.toStringAsFixed(0)} mmHg'),
-            _ReviewLine('Weekly active minutes', questionnaire?.weeklyActiveMinutes.toString() ?? 'Not recorded'),
+            _ReviewLine(
+              'Study site',
+              questionnaire?.studySite ?? 'Not recorded',
+            ),
+            _ReviewLine(
+              'Height',
+              _measurementText(
+                questionnaire?.heightCm,
+                questionnaire?.heightMissingReason,
+                'cm',
+              ),
+            ),
+            _ReviewLine(
+              'Weight',
+              _measurementText(
+                questionnaire?.weightKg,
+                questionnaire?.weightMissingReason,
+                'kg',
+              ),
+            ),
+            _ReviewLine(
+              'Waist',
+              _measurementText(
+                questionnaire?.waistCm,
+                questionnaire?.waistMissingReason,
+                'cm',
+              ),
+            ),
+            _ReviewLine(
+              'BMI',
+              questionnaire?.bmi?.toStringAsFixed(1) ?? 'Not calculated',
+            ),
+            _ReviewLine(
+              'BP reading 1',
+              _bpText(
+                questionnaire?.bpOneSystolic,
+                questionnaire?.bpOneDiastolic,
+                questionnaire?.bpOneMissingReason,
+              ),
+            ),
+            _ReviewLine(
+              'BP reading 2',
+              _bpText(
+                questionnaire?.bpTwoSystolic,
+                questionnaire?.bpTwoDiastolic,
+                questionnaire?.bpTwoMissingReason,
+              ),
+            ),
+            _ReviewLine(
+              'Average blood pressure',
+              questionnaire?.averageSystolic == null ||
+                      questionnaire?.averageDiastolic == null
+                  ? 'Not calculated'
+                  : '${questionnaire!.averageSystolic!.toStringAsFixed(0)} / ${questionnaire!.averageDiastolic!.toStringAsFixed(0)} mmHg',
+            ),
+            _ReviewLine(
+              'Weekly active minutes',
+              questionnaire?.weeklyActiveMinutes.toString() ?? 'Not recorded',
+            ),
             _ReviewLine('Optional Step 2', optionalNote ?? 'Not provided'),
           ],
         ),
@@ -72,6 +122,20 @@ class ReviewScreen extends StatelessWidget {
     ),
   );
 }
+
+String _measurementText(num? value, String? reason, String unit) =>
+    value == null ? _missingText(reason) : '$value $unit';
+
+String _bpText(int? systolic, int? diastolic, String? reason) =>
+    systolic == null || diastolic == null
+    ? _missingText(reason)
+    : '$systolic / $diastolic mmHg';
+
+String _missingText(String? reason) => switch (reason) {
+  'declined' => 'Declined',
+  'unable' => 'Unable to measure',
+  _ => 'Not recorded',
+};
 
 class _ReviewCard extends StatelessWidget {
   const _ReviewCard({required this.title, required this.children, this.onEdit});

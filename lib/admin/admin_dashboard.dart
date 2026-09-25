@@ -212,7 +212,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 readOnly: _connectionError != null,
               ),
               onExport: _connectionError == null
-                  ? () => _copyCsv(context, records)
+                  ? () => _copyCsv(
+                      context,
+                      _recordsForView(records, _query, _filter),
+                    )
                   : null,
             ),
     );
@@ -386,7 +389,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
     await Clipboard.setData(ClipboardData(text: csv));
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Current record view copied as CSV.')),
+      SnackBar(
+        content: Text('Copied ${records.length} matching records as CSV.'),
+      ),
     );
   }
 }
@@ -427,16 +432,7 @@ class _DashboardContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final filtered = records.where((record) {
-      final haystack = [
-        record.id,
-        record.participant.studyId,
-        record.participant.name,
-        record.participant.indianPhone,
-        record.collectorId,
-      ].join(' ').toLowerCase();
-      return haystack.contains(query.toLowerCase()) && filter.matches(record);
-    }).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final filtered = _recordsForView(records, query, filter);
     final stats = _RecordStats(records);
     final compact = MediaQuery.sizeOf(context).width < 900;
 
@@ -835,6 +831,11 @@ class _RecordsPanel extends StatelessWidget {
                   SizedBox(height: 3),
                   Text(
                     'Search, edit, and retain a complete visit history.',
+                    style: TextStyle(color: Color(0xFF667085)),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'CSV follows the search and filter. “All records” includes drafts and archived visits.',
                     style: TextStyle(color: Color(0xFF667085)),
                   ),
                 ],
@@ -1617,12 +1618,15 @@ class _RecordDetails extends StatelessWidget {
             ),
             _DetailRow(
               label: 'BMI',
-              value: questionnaire.bmi.toStringAsFixed(1),
+              value: questionnaire.bmi?.toStringAsFixed(1) ?? 'Not recorded',
             ),
             _DetailRow(
               label: 'Average BP',
               value:
-                  '${questionnaire.averageSystolic.toStringAsFixed(0)} / ${questionnaire.averageDiastolic.toStringAsFixed(0)} mmHg',
+                  questionnaire.averageSystolic == null ||
+                      questionnaire.averageDiastolic == null
+                  ? 'Not recorded'
+                  : '${questionnaire.averageSystolic!.toStringAsFixed(0)} / ${questionnaire.averageDiastolic!.toStringAsFixed(0)} mmHg',
             ),
             _DetailRow(
               label: 'Activity',
@@ -1773,6 +1777,24 @@ extension on _RecordFilter {
       record.reviewState == NeutralReviewState.reviewed && !record.isArchived,
     _RecordFilter.archived => record.isArchived,
   };
+}
+
+List<VisitRecord> _recordsForView(
+  List<VisitRecord> records,
+  String query,
+  _RecordFilter filter,
+) {
+  final normalizedQuery = query.toLowerCase();
+  return records.where((record) {
+    final haystack = [
+      record.id,
+      record.participant.studyId,
+      record.participant.name,
+      record.participant.indianPhone,
+      record.collectorId,
+    ].join(' ').toLowerCase();
+    return haystack.contains(normalizedQuery) && filter.matches(record);
+  }).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 }
 
 String _syncLabel(SyncState state) => switch (state) {

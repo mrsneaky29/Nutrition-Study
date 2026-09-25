@@ -5,12 +5,16 @@ import 'presentation_widgets.dart';
 
 class OptionalStepTwoScreen extends StatefulWidget {
   const OptionalStepTwoScreen({
+    this.initialNote,
+    this.onNoteChanged,
     this.onContinue,
     this.onSkip,
     this.onBack,
     super.key,
   });
 
+  final String? initialNote;
+  final ValueChanged<String>? onNoteChanged;
   final ValueChanged<String?>? onContinue;
   final VoidCallback? onSkip;
   final VoidCallback? onBack;
@@ -21,6 +25,12 @@ class OptionalStepTwoScreen extends StatefulWidget {
 
 class _OptionalStepTwoScreenState extends State<OptionalStepTwoScreen> {
   final _note = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _note.text = widget.initialNote ?? '';
+  }
 
   @override
   void dispose() {
@@ -46,6 +56,7 @@ class _OptionalStepTwoScreenState extends State<OptionalStepTwoScreen> {
                 TextField(
                   controller: _note,
                   maxLines: 4,
+                  onChanged: widget.onNoteChanged,
                   decoration: const InputDecoration(
                     labelText: 'Optional note',
                     hintText: 'Leave blank to continue without this step.',

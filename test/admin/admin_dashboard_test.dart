@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:project2/admin/admin_dashboard.dart';
 import 'package:project2/admin/admin_demo_data.dart';
@@ -393,6 +394,88 @@ void main() {
       expect(find.text('Demo Participant 4'), findsNothing);
     },
   );
+
+  testWidgets('CSV export follows the search and status filter', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final repository = createAdminDemoRepository();
+    await repository.setArchived(
+      actor: admin,
+      visitId: 'visit-102',
+      archived: true,
+    );
+
+    String? copiedCsv;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copiedCsv = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AdminDashboard(repository: repository, admin: admin),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'CSV follows the search and filter. “All records” includes drafts and archived visits.',
+      ),
+      findsOneWidget,
+    );
+    await tester.ensureVisible(find.text('Copy CSV'));
+    await tester.tap(find.text('Copy CSV'));
+    await tester.pumpAndSettle();
+    expect(copiedCsv, contains('visit-104')); // Draft included in All records.
+    expect(
+      copiedCsv,
+      contains('visit-102'),
+    ); // Archived included in All records.
+    expect(find.text('Copied 4 matching records as CSV.'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'Demo Participant 3');
+    await tester.pump();
+    copiedCsv = null;
+    await tester.ensureVisible(find.text('Copy CSV'));
+    await tester.tap(find.text('Copy CSV'));
+    await tester.pumpAndSettle();
+    expect(copiedCsv, contains('visit-103'));
+    expect(copiedCsv, isNot(contains('visit-101')));
+    expect(copiedCsv, isNot(contains('visit-102')));
+    expect(copiedCsv, isNot(contains('visit-104')));
+
+    await tester.enterText(find.byType(TextField), '');
+    await tester.pump();
+    await tester.tap(find.text('All records'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Drafts').last);
+    await tester.pumpAndSettle();
+    copiedCsv = null;
+    await tester.ensureVisible(find.text('Copy CSV'));
+    await tester.tap(find.text('Copy CSV'));
+    await tester.pumpAndSettle();
+    expect(copiedCsv, contains('visit-104'));
+    expect(copiedCsv, isNot(contains('visit-101')));
+    expect(copiedCsv, isNot(contains('visit-102')));
+    expect(copiedCsv, isNot(contains('visit-103')));
+  });
 
   testWidgets(
     'admin dashboard strictly never contains a delete action or delete button',

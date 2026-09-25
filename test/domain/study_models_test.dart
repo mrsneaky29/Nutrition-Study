@@ -22,6 +22,7 @@ void main() {
       expect(participant.studyId, 'NUT012');
       expect(participant.name, 'Test Participant');
       expect(participant.indianPhone, '+919000000001');
+      expect(participant.toCsvRow(), {'participant_study_id': 'NUT012'});
     },
   );
 
@@ -79,6 +80,12 @@ void main() {
       revision: 1,
       stepTwoMeasurement: const StepTwoMeasurement(value: 11.2, unit: 'kg'),
       stepTwoPlaceholderNote: 'Participant asked for a follow-up reminder.',
+      confirmation: VisitConfirmation(
+        name: 'Test Participant',
+        indianPhone: '9000000001',
+        visitNumber: 1,
+        confirmedAt: DateTime.utc(2026),
+      ),
       archiveMetadata: ArchiveMetadata(
         archivedBy: 'admin-a',
         archivedAt: DateTime.utc(2026),
@@ -91,10 +98,10 @@ void main() {
       record.toFirestoreMap()['stepTwoPlaceholderNote'],
       'Participant asked for a follow-up reminder.',
     );
-    expect(
-      record.toCsvRow()['step_2_placeholder_note'],
-      'Participant asked for a follow-up reminder.',
-    );
+    expect(record.toCsvRow().containsKey('step_2_placeholder_note'), isFalse);
+    expect(record.toCsvRow()['confirmed_visit_number'], '1');
+    expect(record.toCsvRow().containsKey('confirmed_name'), isFalse);
+    expect(record.toCsvRow().containsKey('confirmed_indian_phone'), isFalse);
     expect(record.toCsvRow().containsKey('participant_name'), isFalse);
     expect(record.toCsvRow().containsKey('participant_indian_phone'), isFalse);
   });

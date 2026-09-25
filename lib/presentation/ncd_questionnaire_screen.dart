@@ -7,10 +7,18 @@ import 'presentation_widgets.dart';
 /// The custom study form intentionally records observations without scoring or
 /// clinical interpretation. Empty sensitive fields are preserved as missing.
 class NcdQuestionnaireScreen extends StatefulWidget {
-  const NcdQuestionnaireScreen({this.onComplete, this.onBack, super.key});
+  const NcdQuestionnaireScreen({
+    this.onComplete,
+    this.onBack,
+    this.initialDraft,
+    this.onDraftChanged,
+    super.key,
+  });
 
   final ValueChanged<NcdQuestionnaire>? onComplete;
   final VoidCallback? onBack;
+  final Map<String, Object?>? initialDraft;
+  final ValueChanged<Map<String, Object?>>? onDraftChanged;
 
   @override
   State<NcdQuestionnaireScreen> createState() => _NcdQuestionnaireScreenState();
@@ -48,6 +56,102 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
   String? _diabetes;
   String? _cholesterol;
   String? _cardiovascular;
+  String? _heightMissingReason;
+  String? _weightMissingReason;
+  String? _waistMissingReason;
+  String? _bpOneMissingReason;
+  String? _bpTwoMissingReason;
+
+  @override
+  void initState() {
+    super.initState();
+    final draft = widget.initialDraft ?? const <String, Object?>{};
+    String? choice(String key) =>
+        draft[key] is String ? draft[key] as String : null;
+    String entry(String key) => choice(key) ?? '';
+    _site = choice('site');
+    _sex = choice('sex');
+    _education = choice('education');
+    _employment = choice('employment');
+    _fruit = choice('fruit');
+    _vegetables = choice('vegetables');
+    _sugaryDrinks = choice('sugaryDrinks');
+    _processedFood = choice('processedFood');
+    _tobacco = choice('tobacco');
+    _tobaccoType = choice('tobaccoType');
+    _tobaccoFrequency = choice('tobaccoFrequency');
+    _alcohol = choice('alcohol');
+    _alcoholFrequency = choice('alcoholFrequency');
+    _hypertension = choice('hypertension');
+    _diabetes = choice('diabetes');
+    _cholesterol = choice('cholesterol');
+    _cardiovascular = choice('cardiovascular');
+    _heightMissingReason = choice('heightMissingReason');
+    _weightMissingReason = choice('weightMissingReason');
+    _waistMissingReason = choice('waistMissingReason');
+    _bpOneMissingReason = choice('bpOneMissingReason');
+    _bpTwoMissingReason = choice('bpTwoMissingReason');
+    _measurements = draft['measurements'] == true;
+    final entries = <TextEditingController, String>{
+      _age: 'age',
+      _activeDays: 'activeDays',
+      _activeMinutes: 'activeMinutes',
+      _sleep: 'sleep',
+      _height: 'height',
+      _weight: 'weight',
+      _waist: 'waist',
+      _bp1s: 'bp1s',
+      _bp1d: 'bp1d',
+      _bp2s: 'bp2s',
+      _bp2d: 'bp2d',
+    };
+    for (final entryItem in entries.entries) {
+      entryItem.key.text = entry(entryItem.value);
+      entryItem.key.addListener(_emitDraft);
+    }
+  }
+
+  void _setDraft(VoidCallback change) {
+    setState(change);
+    _emitDraft();
+  }
+
+  void _emitDraft() => widget.onDraftChanged?.call({
+    'measurements': _measurements,
+    'site': _site,
+    'age': _age.text,
+    'sex': _sex,
+    'education': _education,
+    'employment': _employment,
+    'fruit': _fruit,
+    'vegetables': _vegetables,
+    'sugaryDrinks': _sugaryDrinks,
+    'processedFood': _processedFood,
+    'tobacco': _tobacco,
+    'tobaccoType': _tobaccoType,
+    'tobaccoFrequency': _tobaccoFrequency,
+    'alcohol': _alcohol,
+    'alcoholFrequency': _alcoholFrequency,
+    'activeDays': _activeDays.text,
+    'activeMinutes': _activeMinutes.text,
+    'sleep': _sleep.text,
+    'hypertension': _hypertension,
+    'diabetes': _diabetes,
+    'cholesterol': _cholesterol,
+    'cardiovascular': _cardiovascular,
+    'height': _height.text,
+    'weight': _weight.text,
+    'waist': _waist.text,
+    'bp1s': _bp1s.text,
+    'bp1d': _bp1d.text,
+    'bp2s': _bp2s.text,
+    'bp2d': _bp2d.text,
+    'heightMissingReason': _heightMissingReason,
+    'weightMissingReason': _weightMissingReason,
+    'waistMissingReason': _waistMissingReason,
+    'bpOneMissingReason': _bpOneMissingReason,
+    'bpTwoMissingReason': _bpTwoMissingReason,
+  });
 
   @override
   void dispose() {
@@ -71,7 +175,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
 
   void _next() {
     if (!(_interviewKey.currentState?.validate() ?? false)) return;
-    setState(() => _measurements = true);
+    _setDraft(() => _measurements = true);
   }
 
   void _complete() {
@@ -90,13 +194,30 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
         activeDaysPerWeek: int.parse(_activeDays.text),
         activeMinutesPerDay: int.parse(_activeMinutes.text),
         sleepHours: double.parse(_sleep.text),
-        heightCm: double.parse(_height.text),
-        weightKg: double.parse(_weight.text),
-        waistCm: double.parse(_waist.text),
-        bpOneSystolic: int.parse(_bp1s.text),
-        bpOneDiastolic: int.parse(_bp1d.text),
-        bpTwoSystolic: int.parse(_bp2s.text),
-        bpTwoDiastolic: int.parse(_bp2d.text),
+        heightCm: _heightMissingReason == null
+            ? double.parse(_height.text)
+            : null,
+        weightKg: _weightMissingReason == null
+            ? double.parse(_weight.text)
+            : null,
+        waistCm: _waistMissingReason == null ? double.parse(_waist.text) : null,
+        bpOneSystolic: _bpOneMissingReason == null
+            ? int.parse(_bp1s.text)
+            : null,
+        bpOneDiastolic: _bpOneMissingReason == null
+            ? int.parse(_bp1d.text)
+            : null,
+        bpTwoSystolic: _bpTwoMissingReason == null
+            ? int.parse(_bp2s.text)
+            : null,
+        bpTwoDiastolic: _bpTwoMissingReason == null
+            ? int.parse(_bp2d.text)
+            : null,
+        heightMissingReason: _heightMissingReason,
+        weightMissingReason: _weightMissingReason,
+        waistMissingReason: _waistMissingReason,
+        bpOneMissingReason: _bpOneMissingReason,
+        bpTwoMissingReason: _bpTwoMissingReason,
         tobaccoUse: _tobacco,
         tobaccoType: _tobacco == 'current' ? _tobaccoType : null,
         tobaccoFrequency: _tobacco == 'current' ? _tobaccoFrequency : null,
@@ -115,7 +236,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
     appBar: AppBar(
       leading: BackButton(
         onPressed: _measurements
-            ? () => setState(() => _measurements = false)
+            ? () => _setDraft(() => _measurements = false)
             : widget.onBack,
       ),
     ),
@@ -137,19 +258,19 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
             'community_clinic': 'Community clinic',
             'community_outreach': 'Community outreach',
             'other_site': 'Other study site',
-          }, (v) => setState(() => _site = v)),
+          }, (v) => _setDraft(() => _site = v)),
           _numberField(_age, 'Age (years)', min: 18, max: 120),
           _select('Sex', _sex, const {
             'female': 'Female',
             'male': 'Male',
             'other': 'Other',
-          }, (v) => setState(() => _sex = v)),
+          }, (v) => _setDraft(() => _sex = v)),
           _select('Education level', _education, const {
             'none': 'No formal schooling',
             'primary': 'Primary',
             'secondary': 'Secondary',
             'higher': 'Higher education',
-          }, (v) => setState(() => _education = v)),
+          }, (v) => _setDraft(() => _education = v)),
           _select('Employment/work category', _employment, const {
             'employed': 'Employed',
             'self_employed': 'Self-employed',
@@ -157,7 +278,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
             'homemaker': 'Homemaker/care work',
             'unemployed': 'Not currently employed',
             'retired': 'Retired',
-          }, (v) => setState(() => _employment = v)),
+          }, (v) => _setDraft(() => _employment = v)),
         ]),
         _section(context, 'Tobacco and alcohol', [
           _optionalSelect(
@@ -168,7 +289,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
               'former': 'Former user',
               'current': 'Current user',
             },
-            (v) => setState(() {
+            (v) => _setDraft(() {
               _tobacco = v;
               if (v != 'current') {
                 _tobaccoType = null;
@@ -181,17 +302,17 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
               'smoked': 'Smoked',
               'smokeless': 'Smokeless',
               'both': 'Both',
-            }, (v) => setState(() => _tobaccoType = v)),
+            }, (v) => _setDraft(() => _tobaccoType = v)),
             _select('Tobacco frequency', _tobaccoFrequency, const {
               'daily': 'Daily',
               'less_than_daily': 'Less than daily',
-            }, (v) => setState(() => _tobaccoFrequency = v)),
+            }, (v) => _setDraft(() => _tobaccoFrequency = v)),
           ],
           _optionalSelect(
             'Alcohol use in the past 30 days',
             _alcohol,
             const {'no': 'No', 'yes': 'Yes'},
-            (v) => setState(() {
+            (v) => _setDraft(() {
               _alcohol = v;
               if (v != 'yes') _alcoholFrequency = null;
             }),
@@ -201,7 +322,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
               'less_than_weekly': 'Less than weekly',
               'one_to_three_weekly': '1–3 days/week',
               'four_or_more_weekly': '4+ days/week',
-            }, (v) => setState(() => _alcoholFrequency = v)),
+            }, (v) => _setDraft(() => _alcoholFrequency = v)),
         ]),
         _section(context, 'Diet, activity and sleep', [
           const Padding(
@@ -214,25 +335,25 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
             'Fruit',
             _fruit,
             _frequencyOptions,
-            (v) => setState(() => _fruit = v),
+            (v) => _setDraft(() => _fruit = v),
           ),
           _select(
             'Vegetables',
             _vegetables,
             _frequencyOptions,
-            (v) => setState(() => _vegetables = v),
+            (v) => _setDraft(() => _vegetables = v),
           ),
           _select(
             'Sugary drinks',
             _sugaryDrinks,
             _frequencyOptions,
-            (v) => setState(() => _sugaryDrinks = v),
+            (v) => _setDraft(() => _sugaryDrinks = v),
           ),
           _select(
             'Processed or packaged foods',
             _processedFood,
             _frequencyOptions,
-            (v) => setState(() => _processedFood = v),
+            (v) => _setDraft(() => _processedFood = v),
           ),
           _numberField(
             _activeDays,
@@ -258,25 +379,25 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
             'Hypertension',
             _hypertension,
             _diagnosisOptions,
-            (v) => setState(() => _hypertension = v),
+            (v) => _setDraft(() => _hypertension = v),
           ),
           _optionalSelect(
             'Diabetes',
             _diabetes,
             _diagnosisOptions,
-            (v) => setState(() => _diabetes = v),
+            (v) => _setDraft(() => _diabetes = v),
           ),
           _optionalSelect(
             'High cholesterol',
             _cholesterol,
             _diagnosisOptions,
-            (v) => setState(() => _cholesterol = v),
+            (v) => _setDraft(() => _cholesterol = v),
           ),
           _optionalSelect(
             'Cardiovascular disease',
             _cardiovascular,
             _diagnosisOptions,
-            (v) => setState(() => _cardiovascular = v),
+            (v) => _setDraft(() => _cardiovascular = v),
           ),
         ]),
         const SizedBox(height: 8),
@@ -299,54 +420,47 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
               'Measurements · 2 of 2. Record both blood-pressure readings.',
         ),
         _section(context, 'Body measurements', [
-          _decimalField(_height, 'Height (cm)', min: 50, max: 250),
-          _decimalField(_weight, 'Weight (kg)', min: 10, max: 350),
-          _decimalField(_waist, 'Waist circumference (cm)', min: 30, max: 250),
+          _measurementDecimal(
+            'Height (cm)',
+            _height,
+            _heightMissingReason,
+            (v) => _setDraft(() => _heightMissingReason = v),
+            min: 50,
+            max: 250,
+          ),
+          _measurementDecimal(
+            'Weight (kg)',
+            _weight,
+            _weightMissingReason,
+            (v) => _setDraft(() => _weightMissingReason = v),
+            min: 10,
+            max: 350,
+          ),
+          _measurementDecimal(
+            'Waist circumference (cm)',
+            _waist,
+            _waistMissingReason,
+            (v) => _setDraft(() => _waistMissingReason = v),
+            min: 30,
+            max: 250,
+          ),
         ]),
         _section(context, 'Blood pressure', [
           const Text('Record two seated readings in mmHg.'),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _numberField(
-                  _bp1s,
-                  'Reading 1 systolic',
-                  min: 50,
-                  max: 300,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _numberField(
-                  _bp1d,
-                  'Reading 1 diastolic',
-                  min: 30,
-                  max: 200,
-                ),
-              ),
-            ],
+          _bloodPressureMeasurement(
+            'Reading 1',
+            _bp1s,
+            _bp1d,
+            _bpOneMissingReason,
+            (v) => _setDraft(() => _bpOneMissingReason = v),
           ),
-          Row(
-            children: [
-              Expanded(
-                child: _numberField(
-                  _bp2s,
-                  'Reading 2 systolic',
-                  min: 50,
-                  max: 300,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _numberField(
-                  _bp2d,
-                  'Reading 2 diastolic',
-                  min: 30,
-                  max: 200,
-                ),
-              ),
-            ],
+          _bloodPressureMeasurement(
+            'Reading 2',
+            _bp2s,
+            _bp2d,
+            _bpTwoMissingReason,
+            (v) => _setDraft(() => _bpTwoMissingReason = v),
           ),
         ]),
         FilledButton(
@@ -372,6 +486,74 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
           ),
         ),
       );
+
+  Widget _measurementStatus(
+    String label,
+    String? reason,
+    ValueChanged<String?> changed,
+  ) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: DropdownButtonFormField<String>(
+      initialValue: reason ?? 'recorded',
+      decoration: InputDecoration(labelText: '$label status'),
+      items: const [
+        DropdownMenuItem(value: 'recorded', child: Text('Measured')),
+        DropdownMenuItem(value: 'unable', child: Text('Unable to measure')),
+        DropdownMenuItem(value: 'declined', child: Text('Declined')),
+      ],
+      onChanged: (value) => changed(value == 'recorded' ? null : value),
+    ),
+  );
+
+  Widget _measurementDecimal(
+    String label,
+    TextEditingController controller,
+    String? reason,
+    ValueChanged<String?> changed, {
+    required double min,
+    required double max,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _measurementStatus(label, reason, changed),
+      if (reason == null) _decimalField(controller, label, min: min, max: max),
+    ],
+  );
+
+  Widget _bloodPressureMeasurement(
+    String label,
+    TextEditingController systolic,
+    TextEditingController diastolic,
+    String? reason,
+    ValueChanged<String?> changed,
+  ) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _measurementStatus(label, reason, changed),
+      if (reason == null)
+        Row(
+          children: [
+            Expanded(
+              child: _numberField(
+                systolic,
+                '$label systolic',
+                min: 50,
+                max: 300,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _numberField(
+                diastolic,
+                '$label diastolic',
+                min: 30,
+                max: 200,
+              ),
+            ),
+          ],
+        ),
+    ],
+  );
 
   Widget _select(
     String label,

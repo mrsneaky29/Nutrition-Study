@@ -777,12 +777,18 @@ class LocalRecordStore {
           'Resolved conflicts cannot be marked reviewed again.',
         );
       }
+      final previous = _clone(conflict);
       conflict['status'] = 'reviewed';
       if (notes != null) {
         conflict['notes'] = notes;
       }
       conflict['reviewedAt'] = _now();
-      await _persistConflicts();
+      try {
+        await _persistConflicts();
+      } catch (_) {
+        _conflicts[id] = previous;
+        rethrow;
+      }
       return _clone(conflict);
     });
   }
@@ -812,17 +818,12 @@ class LocalRecordStore {
         record['id'] = resolution['recordId'];
       }
       final recordId = record['id'] as String;
-      if (_records.containsKey(recordId)) {
-        throw const ApiException(
-          HttpStatus.conflict,
-          'Record ID already belongs to an accepted visit. Choose a new record ID.',
-          conflictType: 'record_id_collision',
-        );
-      }
       final uploadKey = record['idempotencyKey'];
       if (uploadKey != null &&
           _records.values.any(
-            (stored) => stored['idempotencyKey'] == uploadKey,
+            (stored) =>
+                stored['id'] != record['id'] &&
+                stored['idempotencyKey'] == uploadKey,
           )) {
         // Keep the original rejected key in the conflict report so retries
         // can be mapped to this accepted record, while giving the stored visit
@@ -877,15 +878,34 @@ class LocalRecordStore {
         ..['syncState'] = 'synced';
 
       _validateRecord(record);
-      _requireUniqueUpload(record);
-
-      await _saveRecord(recordId, record);
-
+      final alreadyAccepted = _records[recordId];
+      if (alreadyAccepted != null) {
+        // Record data and conflict status live in separate files. A process
+        // restart between their commits leaves the record accepted and the
+        // report pending. Recognize that exact retry so the report can finish
+        // resolving without ever replacing an unrelated visit.
+        if (!_sameResolvedRecord(alreadyAccepted, record)) {
+          throw const ApiException(
+            HttpStatus.conflict,
+            'Record ID already belongs to an accepted visit. Choose a new record ID.',
+            conflictType: 'record_id_collision',
+          );
+        }
+      } else {
+        _requireUniqueUpload(record);
+        await _saveRecord(recordId, record);
+      }
+      final previous = _clone(conflict);
       conflict['status'] = 'resolved';
       conflict['acceptedRecordId'] = recordId;
       conflict['resolution'] = _clone(resolution);
       conflict['resolvedAt'] = _now();
-      await _persistConflicts();
+      try {
+        await _persistConflicts();
+      } catch (_) {
+        _conflicts[id] = previous;
+        rethrow;
+      }
 
       return _clone(conflict);
     });
@@ -971,7 +991,12 @@ class LocalRecordStore {
     };
 
     _conflicts[conflictId] = report;
-    await _persistConflicts();
+    try {
+      await _persistConflicts();
+    } catch (_) {
+      _conflicts.remove(conflictId);
+      rethrow;
+    }
     return report;
   }
 
@@ -1562,6 +1587,13 @@ void _validateQuestionnaire(Object? value) {
     );
   }
   final questionnaire = Map<String, dynamic>.from(value);
+  final version = questionnaire['schemaVersion'] ?? 1;
+  if (version is! int || (version != 1 && version != 2)) {
+    throw ApiException(
+      HttpStatus.badRequest,
+      'questionnaire.schemaVersion must be 1 or 2.',
+    );
+  }
   const requiredText = {
     'studySite',
     'sex',
@@ -1577,6 +1609,10 @@ void _validateQuestionnaire(Object? value) {
     'activeDaysPerWeek',
     'activeMinutesPerDay',
     'sleepHours',
+    'weeklyActiveMinutes',
+  };
+  const derivedNumbers = {'bmi', 'averageSystolic', 'averageDiastolic'};
+  const measurementFields = {
     'heightCm',
     'weightKg',
     'waistCm',
@@ -1584,14 +1620,21 @@ void _validateQuestionnaire(Object? value) {
     'bpOneDiastolic',
     'bpTwoSystolic',
     'bpTwoDiastolic',
-    'weeklyActiveMinutes',
-    'bmi',
-    'averageSystolic',
-    'averageDiastolic',
+  };
+  const missingReasonFields = {
+    'heightMissingReason',
+    'weightMissingReason',
+    'waistMissingReason',
+    'bpOneMissingReason',
+    'bpTwoMissingReason',
   };
   final allowed = {
     ...requiredText,
     ...requiredNumbers,
+    ...derivedNumbers,
+    ...measurementFields,
+    ...missingReasonFields,
+    'schemaVersion',
     'tobaccoUse',
     'tobaccoType',
     'tobaccoFrequency',
@@ -1602,11 +1645,14 @@ void _validateQuestionnaire(Object? value) {
     'highCholesterolDiagnosis',
     'cardiovascularDiagnosis',
   };
+  final requiredFields = {
+    ...requiredText,
+    ...requiredNumbers,
+    ...derivedNumbers,
+    ...measurementFields,
+  };
   if (questionnaire.keys.any((key) => !allowed.contains(key)) ||
-      !questionnaire.keys.toSet().containsAll({
-        ...requiredText,
-        ...requiredNumbers,
-      })) {
+      !questionnaire.keys.toSet().containsAll(requiredFields)) {
     throw ApiException(
       HttpStatus.badRequest,
       'questionnaire has an invalid shape.',
@@ -1623,39 +1669,128 @@ void _validateQuestionnaire(Object? value) {
       );
     }
   }
+  for (final field in derivedNumbers) {
+    if (questionnaire[field] != null && questionnaire[field] is! num) {
+      throw ApiException(
+        HttpStatus.badRequest,
+        'questionnaire.$field must be numeric or null.',
+      );
+    }
+  }
   final age = questionnaire['age'] as num;
   final days = questionnaire['activeDaysPerWeek'] as num;
-  if (age < 18 ||
-      age > 120 ||
-      days < 0 ||
-      days > 7 ||
-      (questionnaire['heightCm'] as num) <= 0 ||
-      (questionnaire['weightKg'] as num) <= 0 ||
-      (questionnaire['waistCm'] as num) <= 0) {
+  if (age < 18 || age > 120 || days < 0 || days > 7) {
     throw ApiException(
       HttpStatus.badRequest,
       'questionnaire values are outside allowed ranges.',
     );
   }
+  final isV2 = version == 2;
+  void validateOptionalMeasurement(String field, String reasonField) {
+    final measurement = questionnaire[field];
+    final reason = questionnaire[reasonField];
+    if (reason != null && reason is! String) {
+      throw ApiException(
+        HttpStatus.badRequest,
+        'questionnaire.$reasonField must be text or null.',
+      );
+    }
+    if (measurement == null) {
+      if (!isV2 || (reason != 'unable' && reason != 'declined')) {
+        throw ApiException(
+          HttpStatus.badRequest,
+          'questionnaire.$reasonField must be unable or declined when $field is missing.',
+        );
+      }
+      return;
+    }
+    if (measurement is! num || measurement <= 0 || reason != null) {
+      throw ApiException(
+        HttpStatus.badRequest,
+        'questionnaire.$field must be positive numeric and cannot have a missing reason.',
+      );
+    }
+  }
+
+  validateOptionalMeasurement('heightCm', 'heightMissingReason');
+  validateOptionalMeasurement('weightKg', 'weightMissingReason');
+  validateOptionalMeasurement('waistCm', 'waistMissingReason');
+
+  void validateBloodPressurePair({
+    required String systolicField,
+    required String diastolicField,
+    required String reasonField,
+  }) {
+    final systolic = questionnaire[systolicField];
+    final diastolic = questionnaire[diastolicField];
+    final reason = questionnaire[reasonField];
+    if (reason != null && reason is! String) {
+      throw ApiException(
+        HttpStatus.badRequest,
+        'questionnaire.$reasonField must be text or null.',
+      );
+    }
+    if (systolic == null || diastolic == null) {
+      if (!isV2 ||
+          systolic != null ||
+          diastolic != null ||
+          (reason != 'unable' && reason != 'declined')) {
+        throw ApiException(
+          HttpStatus.badRequest,
+          'questionnaire.$reasonField must be unable or declined when both blood pressure readings are missing.',
+        );
+      }
+      return;
+    }
+    if (systolic is! num ||
+        diastolic is! num ||
+        systolic <= 0 ||
+        diastolic <= 0 ||
+        reason != null) {
+      throw ApiException(
+        HttpStatus.badRequest,
+        'questionnaire.$systolicField and $diastolicField must be positive numeric and cannot have a missing reason.',
+      );
+    }
+  }
+
+  validateBloodPressurePair(
+    systolicField: 'bpOneSystolic',
+    diastolicField: 'bpOneDiastolic',
+    reasonField: 'bpOneMissingReason',
+  );
+  validateBloodPressurePair(
+    systolicField: 'bpTwoSystolic',
+    diastolicField: 'bpTwoDiastolic',
+    reasonField: 'bpTwoMissingReason',
+  );
   final weekly =
       (questionnaire['activeDaysPerWeek'] as num) *
       (questionnaire['activeMinutesPerDay'] as num);
-  final heightMetres = (questionnaire['heightCm'] as num) / 100;
-  final bmi =
-      (questionnaire['weightKg'] as num) / (heightMetres * heightMetres);
-  final averageSystolic =
-      ((questionnaire['bpOneSystolic'] as num) +
-          (questionnaire['bpTwoSystolic'] as num)) /
-      2;
-  final averageDiastolic =
-      ((questionnaire['bpOneDiastolic'] as num) +
-          (questionnaire['bpTwoDiastolic'] as num)) /
-      2;
-  bool differs(num actual, num expected) => (actual - expected).abs() > 0.0001;
-  if (differs(questionnaire['weeklyActiveMinutes'] as num, weekly) ||
-      differs(questionnaire['bmi'] as num, bmi) ||
-      differs(questionnaire['averageSystolic'] as num, averageSystolic) ||
-      differs(questionnaire['averageDiastolic'] as num, averageDiastolic)) {
+  final height = questionnaire['heightCm'] as num?;
+  final weight = questionnaire['weightKg'] as num?;
+  final bmi = height == null || weight == null
+      ? null
+      : weight / ((height / 100) * (height / 100));
+  final bpOneSystolic = questionnaire['bpOneSystolic'] as num?;
+  final bpOneDiastolic = questionnaire['bpOneDiastolic'] as num?;
+  final bpTwoSystolic = questionnaire['bpTwoSystolic'] as num?;
+  final bpTwoDiastolic = questionnaire['bpTwoDiastolic'] as num?;
+  final averageSystolic = bpOneSystolic == null || bpTwoSystolic == null
+      ? null
+      : (bpOneSystolic + bpTwoSystolic) / 2;
+  final averageDiastolic = bpOneDiastolic == null || bpTwoDiastolic == null
+      ? null
+      : (bpOneDiastolic + bpTwoDiastolic) / 2;
+  bool differs(Object? actual, num? expected) {
+    if (expected == null) return actual != null;
+    return actual is! num || (actual - expected).abs() > 0.0001;
+  }
+
+  if (differs(questionnaire['weeklyActiveMinutes'], weekly) ||
+      differs(questionnaire['bmi'], bmi) ||
+      differs(questionnaire['averageSystolic'], averageSystolic) ||
+      differs(questionnaire['averageDiastolic'], averageDiastolic)) {
     throw ApiException(
       HttpStatus.badRequest,
       'questionnaire derived values do not match the recorded measurements.',
@@ -1664,6 +1799,10 @@ void _validateQuestionnaire(Object? value) {
   for (final field in allowed.difference({
     ...requiredText,
     ...requiredNumbers,
+    ...derivedNumbers,
+    ...measurementFields,
+    ...missingReasonFields,
+    'schemaVersion',
   })) {
     final item = questionnaire[field];
     if (item != null && item is! String) {
@@ -1731,6 +1870,33 @@ void _copyArchiveMarker(
 
 Map<String, dynamic> _participant(Map<String, dynamic> record) =>
     Map<String, dynamic>.from(record['participant'] as Map);
+
+bool _sameResolvedRecord(
+  Map<String, dynamic> accepted,
+  Map<String, dynamic> candidate,
+) {
+  final acceptedContent = _clone(accepted)
+    ..remove('createdAt')
+    ..remove('updatedAt')
+    ..remove('revision')
+    ..remove('syncState');
+  final candidateContent = _clone(candidate)
+    ..remove('createdAt')
+    ..remove('updatedAt')
+    ..remove('revision')
+    ..remove('syncState');
+  return jsonEncode(_canonicalJsonValue(acceptedContent)) ==
+      jsonEncode(_canonicalJsonValue(candidateContent));
+}
+
+Object? _canonicalJsonValue(Object? value) {
+  if (value is Map) {
+    final keys = value.keys.cast<String>().toList()..sort();
+    return {for (final key in keys) key: _canonicalJsonValue(value[key])};
+  }
+  if (value is List) return value.map(_canonicalJsonValue).toList();
+  return value;
+}
 
 bool _isArchived(Map<String, dynamic> record) => record['archivedAt'] != null;
 

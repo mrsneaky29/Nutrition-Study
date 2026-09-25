@@ -38,8 +38,6 @@ class VisitConfirmation {
   };
 
   Map<String, String> toCsvRow() => {
-    'confirmed_name': name,
-    'confirmed_indian_phone': indianPhone,
     'confirmed_visit_number': visitNumber.toString(),
     'confirmed_at': confirmedAt.toUtc().toIso8601String(),
   };
@@ -158,7 +156,9 @@ class VisitRecord {
       stepTwoPlaceholderNote: clearStepTwoPlaceholderNote
           ? null
           : stepTwoPlaceholderNote ?? this.stepTwoPlaceholderNote,
-      questionnaire: clearQuestionnaire ? null : questionnaire ?? this.questionnaire,
+      questionnaire: clearQuestionnaire
+          ? null
+          : questionnaire ?? this.questionnaire,
       archiveMetadata: clearArchiveMetadata
           ? null
           : archiveMetadata ?? this.archiveMetadata,
@@ -239,7 +239,6 @@ class VisitRecord {
     ...?archiveMetadata?.toCsvRow(),
     ...?confirmation?.toCsvRow(),
     ...?stepTwoMeasurement?.toCsvRow(),
-    'step_2_placeholder_note': stepTwoPlaceholderNote ?? '',
     ...?questionnaire?.toCsvRow(),
   };
 }

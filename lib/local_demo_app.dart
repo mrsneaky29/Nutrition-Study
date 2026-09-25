@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 import 'dart:math';
 
@@ -17,6 +18,7 @@ import 'domain/ncd_questionnaire.dart';
 import 'local_sync/http_local_record_sync_client.dart';
 import 'local_sync/local_record_sync_gateway.dart';
 import 'local_storage/local_record_store.dart';
+import 'local_storage/local_visit_draft_store.dart';
 import 'presentation/presentation.dart' as ui;
 import 'presentation/presentation_widgets.dart' as ui;
 
@@ -32,6 +34,7 @@ class LocalDemoApp extends StatefulWidget {
   const LocalDemoApp({
     this.syncGateway,
     this.recordStore,
+    this.visitDraftStore,
     this.cloudController,
     this.secureStorage,
     this.localHttpClient,
@@ -40,6 +43,7 @@ class LocalDemoApp extends StatefulWidget {
 
   final LocalRecordSyncGateway? syncGateway;
   final LocalRecordStore? recordStore;
+  final LocalVisitDraftStore? visitDraftStore;
   final CollectorCloudController? cloudController;
   final FlutterSecureStorage? secureStorage;
 
@@ -165,6 +169,133 @@ class _LocalRecord {
   };
 }
 
+class _InProgressVisitDraft {
+  const _InProgressVisitDraft({
+    required this.id,
+    required this.recordId,
+    required this.participant,
+    required this.visitNumber,
+    required this.collector,
+    required this.step,
+    this.questionnaireDraft,
+    this.questionnaire,
+    this.stepTwoNote,
+  });
+
+  final String id;
+  final String recordId;
+  final ui.ParticipantDraft participant;
+  final int visitNumber;
+  final String collector;
+  final int step;
+  final Map<String, Object?>? questionnaireDraft;
+  final Map<String, Object?>? questionnaire;
+  final String? stepTwoNote;
+
+  _InProgressVisitDraft copyWith({
+    ui.ParticipantDraft? participant,
+    int? visitNumber,
+    int? step,
+    Map<String, Object?>? questionnaireDraft,
+    Map<String, Object?>? questionnaire,
+    bool clearQuestionnaire = false,
+    String? stepTwoNote,
+    bool clearStepTwoNote = false,
+  }) => _InProgressVisitDraft(
+    id: id,
+    recordId: recordId,
+    participant: participant ?? this.participant,
+    visitNumber: visitNumber ?? this.visitNumber,
+    collector: collector,
+    step: step ?? this.step,
+    questionnaireDraft: questionnaireDraft ?? this.questionnaireDraft,
+    questionnaire: clearQuestionnaire
+        ? null
+        : questionnaire ?? this.questionnaire,
+    stepTwoNote: clearStepTwoNote ? null : stepTwoNote ?? this.stepTwoNote,
+  );
+
+  Map<String, Object?> toMap() => {
+    'id': id,
+    'recordId': recordId,
+    'participant': {
+      'studyId': participant.studyId,
+      'name': participant.name,
+      'phone': participant.phone,
+    },
+    'visitNumber': visitNumber,
+    'collector': collector,
+    'step': step,
+    'questionnaireDraft': questionnaireDraft,
+    'questionnaire': questionnaire,
+    'stepTwoNote': stepTwoNote,
+  };
+
+  factory _InProgressVisitDraft.fromMap(Map<String, Object?> json) {
+    final participantValue = json['participant'];
+    if (participantValue is! Map) {
+      throw const FormatException('Stored draft participant is invalid.');
+    }
+    final participant = participantValue.map(
+      (key, value) => MapEntry(key.toString(), value),
+    );
+    final questionnaireDraft = _objectMap(json['questionnaireDraft']);
+    final questionnaire = _objectMap(json['questionnaire']);
+    final step = int.tryParse(json['step'].toString());
+    final visitNumber = int.tryParse(json['visitNumber'].toString());
+    final id = json['id']?.toString();
+    final recordId = json['recordId']?.toString();
+    final collector = json['collector']?.toString();
+    final studyId = participant['studyId']?.toString();
+    final name = participant['name']?.toString();
+    final phone = participant['phone']?.toString();
+    if (id == null || id.trim().isEmpty) {
+      throw const FormatException('Stored draft ID is missing.');
+    }
+    if (recordId == null || recordId.trim().isEmpty) {
+      throw const FormatException('Stored draft record ID is missing.');
+    }
+    if (collector == null || collector.trim().isEmpty) {
+      throw const FormatException('Stored draft collector is missing.');
+    }
+    if (studyId == null || studyId.trim().isEmpty) {
+      throw const FormatException('Stored draft Study ID is missing.');
+    }
+    if (name == null || name.trim().isEmpty) {
+      throw const FormatException('Stored draft name is missing.');
+    }
+    if (phone == null || phone.trim().isEmpty) {
+      throw const FormatException('Stored draft phone is missing.');
+    }
+    if (visitNumber == null || visitNumber < 1) {
+      throw const FormatException('Stored draft visit number is invalid.');
+    }
+    if (step == null || step < 0 || step > 3) {
+      throw const FormatException('Stored draft step is invalid.');
+    }
+    return _InProgressVisitDraft(
+      id: id,
+      recordId: recordId,
+      participant: ui.ParticipantDraft(
+        studyId: studyId,
+        name: name,
+        phone: phone,
+      ),
+      visitNumber: visitNumber,
+      collector: collector,
+      step: step,
+      questionnaireDraft: questionnaireDraft,
+      questionnaire: questionnaire,
+      stepTwoNote: json['stepTwoNote']?.toString(),
+    );
+  }
+}
+
+Map<String, Object?>? _objectMap(Object? value) {
+  if (value is! Map) return null;
+  return value.map((key, value) => MapEntry(key.toString(), value));
+}
+
 class _LocalDemoAppState extends State<LocalDemoApp>
     with WidgetsBindingObserver {
   static const _genericRelease = bool.fromEnvironment('LOCAL_GENERIC_RELEASE');
@@ -197,7 +328,12 @@ class _LocalDemoAppState extends State<LocalDemoApp>
 
   static const _demoCollectorCode = 'C001';
   static const _retryInterval = Duration(seconds: 30);
+  static final Map<LocalRecordStore, InMemoryLocalVisitDraftStore>
+  _injectedDraftStores =
+      HashMap<LocalRecordStore, InMemoryLocalVisitDraftStore>.identity();
   final List<_LocalRecord> _records = [];
+  final List<_InProgressVisitDraft> _visitDrafts = [];
+  final List<Map<String, Object?>> _unreadableVisitDrafts = [];
   bool _isSignedIn = false;
   bool _isSigningIn = false;
   String _collectorCode = _demoCollectorCode;
@@ -205,11 +341,15 @@ class _LocalDemoAppState extends State<LocalDemoApp>
   String _savedServerUrl = '';
   String _savedApiKey = '';
   bool _isRetrying = false;
+  bool _draftStorageWarningShown = false;
   bool _isLoadingRecords = true;
   String? _recordLoadError;
+  String? _draftRecoveryWarning;
   Future<void> _writeTail = Future<void>.value();
+  Future<void> _draftWriteTail = Future<void>.value();
   late LocalRecordSyncGateway _syncGateway;
   late final LocalRecordStore _recordStore;
+  late final LocalVisitDraftStore _visitDraftStore;
   Timer? _retryTimer;
   bool _isAppActive = true;
 
@@ -219,6 +359,16 @@ class _LocalDemoAppState extends State<LocalDemoApp>
     WidgetsBinding.instance.addObserver(this);
     _syncGateway = widget.syncGateway ?? HttpLocalRecordSyncClient();
     _recordStore = widget.recordStore ?? SecureLocalRecordStore();
+    _visitDraftStore =
+        widget.visitDraftStore ??
+        (widget.secureStorage != null
+            ? SecureLocalVisitDraftStore(storage: widget.secureStorage)
+            : widget.recordStore != null
+            ? (_injectedDraftStores[widget.recordStore!] ??=
+                  InMemoryLocalVisitDraftStore())
+            : _isTestEnvironment
+            ? InMemoryLocalVisitDraftStore()
+            : SecureLocalVisitDraftStore());
     if (_genericRelease) {
       _savedServerUrl = HttpLocalRecordSyncClient.configuredApiBaseUrl;
     }
@@ -265,6 +415,9 @@ class _LocalDemoAppState extends State<LocalDemoApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _isAppActive = state == AppLifecycleState.resumed;
+    if (state == AppLifecycleState.paused) {
+      unawaited(_persistVisitDrafts().catchError((Object _) {}));
+    }
     if (_isAppActive && _isSignedIn) {
       unawaited(_retryPendingSubmissions(onlyPending: true));
     }
@@ -513,6 +666,29 @@ class _LocalDemoAppState extends State<LocalDemoApp>
     try {
       final stored = await _recordStore.readAll();
       final restored = stored.map(_LocalRecord.fromStorageJson).toList();
+      var restoredDrafts = <_InProgressVisitDraft>[];
+      var unreadableDrafts = <Map<String, Object?>>[];
+      var skippedDraftCount = 0;
+      var cleanDraftStore = false;
+      try {
+        final storedDrafts = await _visitDraftStore.readAll();
+        for (final storedDraft in storedDrafts) {
+          try {
+            final draft = _InProgressVisitDraft.fromMap(storedDraft);
+            if (restored.any((record) => record.id == draft.recordId)) {
+              cleanDraftStore = true;
+            } else {
+              restoredDrafts.add(draft);
+            }
+          } catch (_) {
+            skippedDraftCount++;
+            unreadableDrafts.add(storedDraft);
+          }
+        }
+      } catch (_) {
+        // Corrupt draft storage must not make saved submissions unavailable.
+        skippedDraftCount++;
+      }
       if (_provisionedCollectorCode == null) {
         if (widget.recordStore != null &&
             _storeProvisioning.containsKey(widget.recordStore!)) {
@@ -571,8 +747,18 @@ class _LocalDemoAppState extends State<LocalDemoApp>
         _records
           ..clear()
           ..addAll(restored);
+        _visitDrafts
+          ..clear()
+          ..addAll(restoredDrafts);
+        _unreadableVisitDrafts
+          ..clear()
+          ..addAll(unreadableDrafts);
+        _draftRecoveryWarning = skippedDraftCount == 0 ? null : 'Some saved visit drafts could not be restored. Other saved visits are still available.';
         _isLoadingRecords = false;
       });
+      if (cleanDraftStore) {
+        unawaited(_persistVisitDrafts());
+      }
       if (_isSignedIn) {
         unawaited(_retryPendingSubmissions());
       }
@@ -636,6 +822,11 @@ class _LocalDemoAppState extends State<LocalDemoApp>
           )
           .length,
       recentSubmissions: submissions.take(5).toList(),
+      savedVisitDraftCount: _visitDrafts
+          .where((draft) => draft.collector == _collectorCode)
+          .length,
+      draftRecoveryWarning: _draftRecoveryWarning,
+      onResumeSavedVisit: _resumeSavedVisit,
       onStartEntry: _startEntry,
       onOpenSubmissions: () => _openSubmissions(submissions),
       onOpenSubmission: _openSubmission,
@@ -649,6 +840,8 @@ class _LocalDemoAppState extends State<LocalDemoApp>
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (screenContext) => ui.ParticipantLookupScreen(
+          allowOfflineStudyIdLookup:
+              _genericRelease && widget.cloudController == null,
           onCancel: () => Navigator.pop(screenContext),
           onSubmit: (participant) =>
               _checkParticipant(screenContext, participant),
@@ -662,6 +855,10 @@ class _LocalDemoAppState extends State<LocalDemoApp>
     BuildContext screenContext,
     ui.ParticipantDraft participant,
   ) async {
+    if (participant.studyId.trim().isNotEmpty) {
+      await _startOfflineRepeatVisit(screenContext, participant.studyId);
+      return;
+    }
     final phone = participant.phone.replaceAll(RegExp(r'\D'), '');
     final validPhone = RegExp(r'^(?:91)?[6-9]\d{9}$').hasMatch(phone);
     if (!validPhone) {
@@ -688,6 +885,21 @@ class _LocalDemoAppState extends State<LocalDemoApp>
       localCandidates[id] = ParticipantLookupCandidate(
         studyId: id,
         name: record.participant.name,
+        nextVisitNumber:
+            previous == null || nextVisit > previous.nextVisitNumber
+            ? nextVisit
+            : previous.nextVisitNumber,
+      );
+    }
+    for (final draft in _visitDrafts) {
+      if (draft.collector != _collectorCode) continue;
+      final id = normalizeParticipantStudyId(draft.participant.studyId);
+      if (id == null) continue;
+      final previous = localCandidates[id];
+      final nextVisit = draft.visitNumber;
+      localCandidates[id] = ParticipantLookupCandidate(
+        studyId: id,
+        name: draft.participant.name,
         nextVisitNumber:
             previous == null || nextVisit > previous.nextVisitNumber
             ? nextVisit
@@ -800,6 +1012,10 @@ class _LocalDemoAppState extends State<LocalDemoApp>
       name: assignedName,
       phone: assignedPhone,
     );
+    if (await _offerResumeUnfinishedVisit(screenContext, participantNumber)) {
+      return;
+    }
+    if (!screenContext.mounted) return;
     final prior = _records
         .where(
           (record) =>
@@ -831,6 +1047,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
             ],
           ),
         );
+        if (!screenContext.mounted) return;
         if (confirmed != true) return;
       }
     }
@@ -845,30 +1062,300 @@ class _LocalDemoAppState extends State<LocalDemoApp>
           1;
     }
     if (!screenContext.mounted) return;
+    await _openVisitDraft(
+      screenContext,
+      _newVisitDraft(
+        participant: normalized,
+        visitNumber: visitNumber,
+        recordId: allocatedVisitId,
+      ),
+    );
+    if (screenContext.mounted) Navigator.pop(screenContext);
+  }
+
+  Future<void> _startOfflineRepeatVisit(
+    BuildContext screenContext,
+    String enteredStudyId,
+  ) async {
+    final studyId = normalizeParticipantStudyId(enteredStudyId);
+    if (studyId == null) return;
+    if (await _offerResumeUnfinishedVisit(screenContext, studyId)) return;
+    if (!screenContext.mounted) return;
+    final matches = _records
+        .where(
+          (record) =>
+              record.collector == _collectorCode &&
+              normalizeParticipantStudyId(record.participant.studyId) ==
+                  studyId,
+        )
+        .toList();
+    if (matches.isEmpty) {
+      ScaffoldMessenger.of(screenContext).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No saved visit for this Study ID is available on this phone. '
+            'Connect to the study archive or sync the phone that has its history.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final identities = matches
+        .map(
+          (record) =>
+              '${record.participant.name.trim().toLowerCase()}|${record.participant.phone.trim()}',
+        )
+        .toSet();
+    if (identities.length != 1 ||
+        matches.any(
+          (record) =>
+              record.participant.name.trim().isEmpty ||
+              record.participant.phone.trim().isEmpty,
+        )) {
+      ScaffoldMessenger.of(screenContext).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Saved details for this Study ID do not agree. Check the study card and contact the supervisor before continuing.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final latest = matches.reduce(
+      (a, b) => a.visitNumber >= b.visitNumber ? a : b,
+    );
+    final participant = ui.ParticipantDraft(
+      studyId: studyId,
+      name: latest.participant.name.trim(),
+      phone: latest.participant.phone.trim(),
+    );
+    final nextVisit =
+        matches.fold<int>(
+          0,
+          (max, record) => record.visitNumber > max ? record.visitNumber : max,
+        ) +
+        1;
+    if (!screenContext.mounted) return;
+    await _openVisitDraft(
+      screenContext,
+      _newVisitDraft(participant: participant, visitNumber: nextVisit),
+    );
+    if (screenContext.mounted) Navigator.pop(screenContext);
+  }
+
+  Future<bool> _offerResumeUnfinishedVisit(
+    BuildContext screenContext,
+    String studyId,
+  ) async {
+    final normalizedId = normalizeParticipantStudyId(studyId);
+    if (normalizedId == null || !screenContext.mounted) return false;
+    final unfinished =
+        _visitDrafts
+            .where(
+              (draft) =>
+                  draft.collector == _collectorCode &&
+                  normalizeParticipantStudyId(draft.participant.studyId) ==
+                      normalizedId,
+            )
+            .toList()
+          ..sort((a, b) => b.visitNumber.compareTo(a.visitNumber));
+    if (unfinished.isEmpty) return false;
+
+    final selected = unfinished.first;
+    final resume = await showDialog<bool>(
+      context: screenContext,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Visit already in progress'),
+        content: Text(
+          '${selected.participant.name} has an unfinished Visit '
+          '${selected.visitNumber}. Resume it before starting another visit.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Resume visit'),
+          ),
+        ],
+      ),
+    );
+    if (resume == true && screenContext.mounted) {
+      await _openVisitDraft(screenContext, selected);
+      if (screenContext.mounted) Navigator.pop(screenContext);
+    }
+    return true;
+  }
+
+  _InProgressVisitDraft _newVisitDraft({
+    required ui.ParticipantDraft participant,
+    required int visitNumber,
+    String? recordId,
+  }) {
+    final random = Random.secure().nextInt(1 << 32);
+    final timestamp = DateTime.now().microsecondsSinceEpoch;
+    return _InProgressVisitDraft(
+      id: 'DRAFT-$timestamp-$random',
+      recordId: recordId ?? 'LOCAL-$timestamp-$random',
+      participant: participant,
+      visitNumber: visitNumber,
+      collector: _collectorCode,
+      step: 0,
+    );
+  }
+
+  Future<void> _openVisitDraft(
+    BuildContext screenContext,
+    _InProgressVisitDraft draft,
+  ) async {
+    if (!_visitDrafts.any((saved) => saved.id == draft.id)) {
+      try {
+        await _saveVisitDraft(draft);
+      } catch (_) {
+        if (screenContext.mounted) {
+          ScaffoldMessenger.of(screenContext).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Could not save an in-progress copy on this phone. The visit was not opened.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+    }
+    if (!screenContext.mounted) return;
     final record = await Navigator.of(screenContext).push<_LocalRecord>(
       MaterialPageRoute(
         builder: (_) => _LocalVisitFlow(
-          participant: normalized,
-          visitNumber: visitNumber,
-          collectorCode: _collectorCode,
-          visitId: allocatedVisitId,
+          draft: draft,
           onSync: _syncRecord,
           onPersist: _persistSubmittedRecord,
-          onLookupPriorRecords: (studyId) => _records
+          onFlushDraftWrites: () => _draftWriteTail,
+          onDraftChanged: (updated) {
+            unawaited(
+              _saveVisitDraft(updated).catchError((Object _) {
+                if (mounted && !_draftStorageWarningShown) {
+                  _draftStorageWarningShown = true;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Could not save recent answers on this phone. Check storage before continuing.',
+                      ),
+                    ),
+                  );
+                }
+              }),
+            );
+          },
+          onDraftCompleted: (id) {
+            unawaited(_removeVisitDraft(id).catchError((Object _) {}));
+          },
+          onLookupPriorRecords: (id) => _records
               .where(
                 (r) =>
                     r.collector == _collectorCode &&
-                    r.participant.studyId == studyId,
+                    normalizeParticipantStudyId(r.participant.studyId) == id,
               )
               .toList(),
         ),
       ),
     );
-    if (record != null) {
-      await _persistSubmittedRecord(record);
-      unawaited(_retryPendingSubmissions());
+    if (record != null) unawaited(_retryPendingSubmissions());
+  }
+
+  Future<void> _resumeSavedVisit() async {
+    final drafts =
+        _visitDrafts
+            .where((draft) => draft.collector == _collectorCode)
+            .toList()
+          ..sort((a, b) => b.id.compareTo(a.id));
+    if (drafts.isEmpty) return;
+    _InProgressVisitDraft? selected;
+    if (drafts.length == 1) {
+      selected = drafts.single;
+    } else if (mounted) {
+      selected = await showDialog<_InProgressVisitDraft>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Resume a saved visit'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final draft in drafts)
+                  ListTile(
+                    title: Text(draft.participant.name),
+                    subtitle: Text(
+                      '${draft.participant.studyId} · Visit ${draft.visitNumber}',
+                    ),
+                    onTap: () => Navigator.pop(dialogContext, draft),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      );
     }
-    if (screenContext.mounted) Navigator.pop(screenContext);
+    if (selected != null && mounted) {
+      await _openVisitDraft(context, selected);
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _saveVisitDraft(_InProgressVisitDraft draft) async {
+    final index = _visitDrafts.indexWhere((saved) => saved.id == draft.id);
+    final previous = index < 0 ? null : _visitDrafts[index];
+    if (index < 0) {
+      _visitDrafts.add(draft);
+    } else {
+      _visitDrafts[index] = draft;
+    }
+    try {
+      await _persistVisitDrafts();
+    } catch (_) {
+      if (index < 0) {
+        _visitDrafts.remove(draft);
+      } else {
+        _visitDrafts[index] = previous!;
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _removeVisitDraft(String id) async {
+    final index = _visitDrafts.indexWhere((draft) => draft.id == id);
+    if (index < 0) return;
+    final previous = _visitDrafts.removeAt(index);
+    try {
+      await _persistVisitDrafts();
+    } catch (_) {
+      _visitDrafts.insert(index, previous);
+      rethrow;
+    }
+  }
+
+  Future<void> _persistVisitDrafts() {
+    final snapshot = [
+      ..._visitDrafts.map((draft) => draft.toMap()),
+      ..._unreadableVisitDrafts,
+    ];
+    _draftWriteTail = _draftWriteTail.then(
+      (_) => _visitDraftStore.writeAll(snapshot),
+      onError: (_) => _visitDraftStore.writeAll(snapshot),
+    );
+    return _draftWriteTail;
   }
 
   Future<_ParticipantSelection?> _chooseParticipantForPhone(
@@ -1191,21 +1678,21 @@ VisitRecord _domainRecord(_LocalRecord record) {
 
 class _LocalVisitFlow extends StatefulWidget {
   const _LocalVisitFlow({
-    required this.participant,
-    required this.visitNumber,
-    required this.collectorCode,
+    required this.draft,
     required this.onSync,
     required this.onPersist,
-    this.visitId,
+    required this.onFlushDraftWrites,
+    required this.onDraftChanged,
+    required this.onDraftCompleted,
     this.onLookupPriorRecords,
   });
 
-  final ui.ParticipantDraft participant;
-  final int visitNumber;
-  final String collectorCode;
-  final String? visitId;
+  final _InProgressVisitDraft draft;
   final Future<void> Function(_LocalRecord record) onSync;
   final Future<void> Function(_LocalRecord record) onPersist;
+  final Future<void> Function() onFlushDraftWrites;
+  final void Function(_InProgressVisitDraft draft) onDraftChanged;
+  final void Function(String draftId) onDraftCompleted;
   final List<_LocalRecord> Function(String studyId)? onLookupPriorRecords;
 
   @override
@@ -1213,10 +1700,12 @@ class _LocalVisitFlow extends StatefulWidget {
 }
 
 class _LocalVisitFlowState extends State<_LocalVisitFlow> {
-  int _step = 0;
+  late int _step;
+  late _InProgressVisitDraft _draft;
   late ui.ParticipantDraft _participant;
   late int _visitNumber;
   NcdQuestionnaire? _questionnaire;
+  Map<String, Object?>? _questionnaireDraft;
   String? _stepTwoNote;
   _LocalRecord? _record;
   bool _isSubmitting = false;
@@ -1224,8 +1713,43 @@ class _LocalVisitFlowState extends State<_LocalVisitFlow> {
   @override
   void initState() {
     super.initState();
-    _participant = widget.participant;
-    _visitNumber = widget.visitNumber;
+    _draft = widget.draft;
+    _participant = _draft.participant;
+    _visitNumber = _draft.visitNumber;
+    _questionnaireDraft = _draft.questionnaireDraft;
+    _questionnaire = NcdQuestionnaire.fromMap(_draft.questionnaire);
+    _step = _draft.step;
+    if (_step > 1 && _questionnaire == null) {
+      // A stale or malformed completion marker must never skip the required
+      // questionnaire and allow a blank submission.
+      _step = 1;
+      _draft = _draft.copyWith(step: _step);
+      widget.onDraftChanged(_draft);
+    }
+    _stepTwoNote = _draft.stepTwoNote;
+  }
+
+  void _saveDraft({
+    int? step,
+    ui.ParticipantDraft? participant,
+    int? visitNumber,
+    Map<String, Object?>? questionnaireDraft,
+    Map<String, Object?>? questionnaire,
+    bool clearQuestionnaire = false,
+    String? stepTwoNote,
+    bool clearStepTwoNote = false,
+  }) {
+    _draft = _draft.copyWith(
+      participant: participant,
+      visitNumber: visitNumber,
+      step: step,
+      questionnaireDraft: questionnaireDraft,
+      questionnaire: questionnaire,
+      clearQuestionnaire: clearQuestionnaire,
+      stepTwoNote: stepTwoNote,
+      clearStepTwoNote: clearStepTwoNote,
+    );
+    widget.onDraftChanged(_draft);
   }
 
   void _specifyExistingStudyId(String newStudyId, int? visitNum) {
@@ -1249,6 +1773,7 @@ class _LocalVisitFlowState extends State<_LocalVisitFlow> {
         phone: _participant.phone,
       );
       _visitNumber = resolvedVisit;
+      _saveDraft(participant: _participant, visitNumber: _visitNumber);
     });
   }
 
@@ -1258,25 +1783,51 @@ class _LocalVisitFlowState extends State<_LocalVisitFlow> {
       participant: _participant,
       proposedVisitNumber: _visitNumber,
       onBack: () => Navigator.pop(context),
-      onConfirm: () => setState(() => _step = 1),
+      onConfirm: () => setState(() {
+        _step = 1;
+        _saveDraft(step: _step);
+      }),
       onSpecifyExistingId: _specifyExistingStudyId,
     ),
     1 => ui.NcdQuestionnaireScreen(
-      onBack: () => setState(() => _step = 0),
+      initialDraft: _questionnaireDraft,
+      onDraftChanged: (draft) {
+        _questionnaireDraft = draft;
+        _saveDraft(questionnaireDraft: draft);
+      },
+      onBack: () => setState(() {
+        _step = 0;
+        _saveDraft(step: _step);
+      }),
       onComplete: (questionnaire) => setState(() {
         _questionnaire = questionnaire;
         _step = 2;
+        _saveDraft(step: _step, questionnaire: questionnaire.toMap());
       }),
     ),
     2 => ui.OptionalStepTwoScreen(
-      onBack: () => setState(() => _step = 1),
+      initialNote: _stepTwoNote,
+      onNoteChanged: (note) {
+        _stepTwoNote = note;
+        _saveDraft(stepTwoNote: note);
+      },
+      onBack: () => setState(() {
+        _step = 1;
+        _saveDraft(step: _step);
+      }),
       onSkip: () => setState(() {
         _stepTwoNote = null;
         _step = 3;
+        _saveDraft(step: _step, clearStepTwoNote: true);
       }),
       onContinue: (note) => setState(() {
         _stepTwoNote = note;
         _step = 3;
+        _saveDraft(
+          step: _step,
+          stepTwoNote: note,
+          clearStepTwoNote: note == null,
+        );
       }),
     ),
     3 => ui.ReviewScreen(
@@ -1284,7 +1835,10 @@ class _LocalVisitFlowState extends State<_LocalVisitFlow> {
       visitNumber: _visitNumber,
       questionnaire: _questionnaire,
       optionalNote: _stepTwoNote,
-      onBack: () => setState(() => _step = 2),
+      onBack: () => setState(() {
+        _step = 2;
+        _saveDraft(step: _step);
+      }),
       onSubmit: _isSubmitting ? null : _submit,
       isSubmitting: _isSubmitting,
     ),
@@ -1321,14 +1875,20 @@ class _LocalVisitFlowState extends State<_LocalVisitFlow> {
   }
 
   Future<void> _submit() async {
+    // Drain every queued answer snapshot before the durable submission is
+    // written and the matching draft is removed.
+    try {
+      await widget.onFlushDraftWrites();
+    } catch (_) {
+      // The submitted record remains the final source of truth if a draft
+      // snapshot failed; its stable ID still prevents duplicate submission.
+    }
     final now = DateTime.now();
     final record = _LocalRecord(
-      id:
-          widget.visitId ??
-          'LOCAL-${now.microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}',
+      id: _draft.recordId,
       participant: _participant,
       visitNumber: _visitNumber,
-      collector: widget.collectorCode,
+      collector: _draft.collector,
       submittedAt: now,
       stepTwoNote: _stepTwoNote,
       questionnaire: _questionnaire,
@@ -1356,6 +1916,10 @@ class _LocalVisitFlowState extends State<_LocalVisitFlow> {
       );
       return;
     }
+    // The durable record uses the draft's stable ID. If a crash occurs before
+    // this cleanup reaches storage, startup sees the submitted record and
+    // suppresses the matching draft instead of offering a duplicate visit.
+    widget.onDraftCompleted(_draft.id);
     try {
       await widget.onSync(record);
       await widget.onPersist(record);
