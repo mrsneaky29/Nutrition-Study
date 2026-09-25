@@ -10,7 +10,12 @@ the same trusted Wi-Fi network. Do not forward port 8787 to the internet.
   APK on every test phone; it is not tied to a device.
 - `nutrition-study-source-first-test.zip`: the server source and test launcher.
 - `nutrition-study-admin-web-first-test.zip`: the separate admin webpage.
-- `SHA256SUMS.txt`: hashes for checking the three downloads.
+- `nutrition-study-collector-web-first-test.zip`: the optional browser version
+  of the collector interface.
+- `study-collector-1.0.0+1.*` and `study-collector-1.0.0+2.*`: the Android
+  distribution archives and their original checksum files. Use the `+2` APK
+  for this test; the `+1` files are retained only as earlier build artifacts.
+- `SHA256SUMS.txt`: hashes for checking the uploaded files.
 
 The private Android signing key and its password are **not** in this test kit.
 They are backed up separately. No participant records are in the kit.
