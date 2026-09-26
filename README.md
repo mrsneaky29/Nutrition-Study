@@ -1,266 +1,117 @@
-# Project2
+# Nutrition Study
 
-Project2 has two deliberately separate clients:
+Nutrition Study 1.0.0+5 is a synthetic-data pre-deployment release. It has two
+separate clients: the shared Android collector app (`lib/main.dart`) and the
+browser-only administrator portal (`lib/admin_main.dart`). The collector app
+has no admin route; the portal prompts for its admin key at runtime. Do not
+treat this checkpoint as approval to collect live study data.
 
-- a collector app for Android phones and mobile browsers (`lib/main.dart`);
-- a browser-only administration portal (`lib/admin_main.dart`).
+The collector keeps unsent submissions in encrypted Android storage and
+retries them when its configured service is reachable. Collector credentials
+and identity are entered at sign-in; the shared APK does not permanently bind
+an account to a phone. Signing in on another phone takes over that collector's
+session. Recover pending records from the old phone before clearing or
+replacing it. Generated Study IDs use a collision-resistant 16-digit random
+suffix; the server checks for duplicates at sync, and the app has no
+participant-count cap.
 
-The collector app does not contain an admin route or admin login. It includes
-a compact, custom interviewer-entered NCD-risk questionnaire for adults 18+:
-demographics, tobacco/alcohol, diet, activity, sleep, reported diagnoses, and
-height, weight, waist, and two blood-pressure readings. It borrows the shape
-of established surveillance tools but is not a WHO STEPS implementation.
+The questionnaire records reasons (`unable` or `declined`) for missing
+height, weight, waist, and blood-pressure measurements. BMI is calculated only
+when height and weight are present; average blood pressure is calculated only
+when both readings are present. The admin record details and CSV export retain
+the missing reasons while leaving missing numeric values empty. Exports omit
+participant name and phone.
 
-Participant name and phone are retained only for the operational repeat-visit
-workflow. Questionnaire CSV exports use the study ID and deliberately omit
-those direct identifiers.
+## Current +5 deployment status
 
-Collector submissions are retained across app restarts in encrypted Android
-storage. Pending and failed submissions remain available for manual retry while
-the production cloud synchronization layer is still disconnected.
+The prepared DigitalOcean Ubuntu VPS runs the backend as a private loopback
+service. Caddy is installed but inactive. Private backend checks have passed; the
+admin origin is reserved as `https://admin.pending.invalid`. The real domain,
+public Caddy routes, TLS certificates, and public admin deployment are still
+pending. Public mode requires HTTPS, an exact allowed admin origin, distinct
+collector credentials and an admin key, each at least 32 characters. Never expose
+port 8787 directly or relax these checks for testing.
 
-## Local collector app
+Encrypted Google Drive backup and isolated synthetic restore checks have
+passed. The scheduled backup timer remains disabled pending physical recovery
+key retention and final activation checks. Keep signing keys, server
+credentials, Drive recovery material, and participant records out of the
+repository and release archives. No Play Store publication is planned.
 
-Connect an Android phone by USB or wireless debugging, then run:
+See [the historical pre-deployment report](PLUS5_PREDEPLOYMENT_REPORT.md),
+[the server checkpoint](PLUS5_SERVER_CHECKPOINT.md), and
+[the private setup checkpoint](PLUS5_PRIVATE_SETUP_CHECKPOINT.md) for the
+recorded verification checkpoints. Later encrypted-backup progress is recorded
+in [the backup setup status](tool/vps/OFFSITE_BACKUP_SETUP.md); older checkpoint
+documents retain their earlier state rather than serving as live status.
 
-```powershell
-flutter run -d <device-id> -t lib/main.dart
-```
+## Build and deploy
 
-Local demo account:
-
-- collector number: `1`
-
-## Local admin webpage
-
-Run the independent web entrypoint in Chrome:
-
-```powershell
-flutter run -d chrome -t lib/admin_main.dart
-```
-
-The admin portal reads from the local LAN adapter by default. Its Firebase
-session and collector-account adapters are implemented; the Firebase visit
-repository and hosted sign-in screen remain to be connected.
-
-## Firebase collector build
-
-The production collector selects Firebase explicitly and fails at startup when
-any deployment value is missing:
-
-```powershell
-flutter build apk --release -t lib/main.dart `
-  --dart-define=STUDY_RUNTIME_MODE=firebase-production `
-  --dart-define=STUDY_ID=nutrition-study-2026 `
-  --dart-define=FIREBASE_API_KEY=<web-api-key> `
-  --dart-define=FIREBASE_APP_ID=<firebase-app-id> `
-  --dart-define=FIREBASE_MESSAGING_SENDER_ID=<sender-id> `
-  --dart-define=FIREBASE_PROJECT_ID=nutrition-study-2026 `
-  --dart-define=FIREBASE_AUTH_DOMAIN=nutrition-study-2026.firebaseapp.com `
-  --dart-define=FIREBASE_FUNCTIONS_REGION=asia-south1
-```
-
-Do not distribute a Firebase production build until one test collector has
-completed phone-to-admin synchronization in the deployed project.
-
-## Collector and admin websites
-
-Build both independently so the collector and administrator entrypoints can be
-hosted at different addresses:
+Build the public admin site against the actual API HTTPS origin after the real
+domain is configured:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tool/build_web_clients.ps1
+powershell -ExecutionPolicy Bypass -File tool/build_web_clients.ps1 `
+  -AdminOnly -PublicRelease -AdminApiBaseUrl https://api.YOUR-DOMAIN -NoPub
 ```
 
-For local previews, run the script without collector-specific parameters. Its
-older optional keyed-build parameters are not part of the shared-APK release
-flow. The separate admin website asks for its key at runtime.
+This builds only `build/admin_web` and passes the API origin as
+`LOCAL_API_BASE_URL`. It does not embed admin or collector keys or collector
+identity. `-NoPub` assumes Flutter dependencies are already resolved. The
+placeholder `YOUR-DOMAIN` must be replaced; do not deploy an admin bundle built
+against `api.example.org` or any placeholder domain.
 
-The outputs are `build/collector_web` and `build/admin_web`. The collector build
-is an installable mobile web app. For low-memory local previews, serve either
-already-built directory with the dependency-free Node server:
-
-```powershell
-node tool/static_site_server.js --root=build/collector_web --port=8085
-node tool/static_site_server.js --root=build/admin_web --port=8086
-```
-
-Firebase Hosting has separate `collector` and `admin` targets configured in
-`firebase.json`. Their actual Firebase site IDs will be assigned after the
-Firebase project and billing account are available.
-
-## Shared local records
-
-For phone submissions to appear in the admin webpage, start the LAN service
-with distinct collector keys and a separate administrator key (minimum 16 characters each).
-
-> [!CAUTION]
-> **Security Notice**: Cleartext LAN HTTP (`http://<ip>:8787`) and bearer keys are designed
-> **strictly for trusted home or local Wi-Fi networks**. They are **NOT suitable for public internet
-> exposure**. Never expose this service directly to the public internet.
-
-### Collector Credential Binding & Server Start-Up
-
-Collector credentials bind each bearer key to an explicit collector identity:
-- Format: `LOCAL_SYNC_COLLECTOR_KEYS=C001:key1,C002:key2` (each key >= 16 characters).
-- The server derives the authorized collector identity from the key; incoming upload payloads must match this `collectorId` or the server rejects the request.
-- The administrator key is configured via `LOCAL_SYNC_ADMIN_KEY` (minimum 16 characters) and is **strictly entered at runtime** in the browser.
-
-#### PowerShell (Windows):
-
-Replace every angle-bracketed value below with a different, privately generated secret before starting the server; the text shown is not a usable credential.
-
-```powershell
-$env:LOCAL_SYNC_COLLECTOR_KEYS = "C001:<unique-random-secret-for-collector-1>,C002:<unique-random-secret-for-collector-2>"
-$env:LOCAL_SYNC_ADMIN_KEY = "<unique-random-admin-secret>"
-dart run tool/local_sync_server.dart --host=<computer-wifi-ip> --port=8787
-```
-
-#### Bash (Linux / macOS):
-
-```bash
-export LOCAL_SYNC_COLLECTOR_KEYS="C001:<unique-random-secret-for-collector-1>,C002:<unique-random-secret-for-collector-2>"
-export LOCAL_SYNC_ADMIN_KEY="<unique-random-admin-secret>"
-dart run tool/local_sync_server.dart --host=<computer-wifi-ip> --port=8787
-```
-
-### Collector Sign-In & Offline Safety
-
-Install the same collector APK on each phone. On the sign-in screen, a
-collector enters their assigned number (for example, `1`), the home-PC server
-URL, and their access key. These details are not embedded in the APK. A
-successful sign-in on another phone becomes the current session for that
-collector; there is no permanent device binding. The previous phone cannot
-sync under its superseded session. Its unsynced records stay on that phone,
-so recover and sync them before replacing or clearing the device. Explicit
-sign-out clears the saved collector key and session token, not visit records.
-
-```powershell
-# Collector app: enter server URL, collector number, and key on screen.
-flutter run -d <device-id> -t lib/main.dart
-
-# Admin web portal (prompts for admin key interactively at runtime in the browser):
-flutter run -d chrome -t lib/admin_main.dart `
-  --dart-define=LOCAL_API_BASE_URL=http://<computer-wifi-ip>:8787
-```
-
-Field staff can collect while offline after setup. Submitted records are saved
-in Android secure storage. When the configured home-PC endpoint becomes
-reachable, the app retries pending submissions while it is open and active;
-the endpoint is not discovered automatically.
-
-### Participant ID Scheme & Repeat Visits
-
-- **Collision-safe Study IDs (No 200 Limit)**: The app generates a new Study ID from the collector prefix and a random 16-digit suffix, such as `C01-4827163094582731`, rather than a per-phone sequence. The same collector can therefore switch phones without suggesting the same next ID. The server still checks for collisions at sync time. Legacy `C01-000001` and `P001` IDs remain valid for existing participants. Study IDs are separate from the simple visit number shown for repeat visits.
-- **Online Repeat-Visit Lookup (`GET /participants/lookup`)**: When the configured server is reachable, collectors can look up participants by phone number to verify study IDs and prior visits.
-- **Offline Repeat Visits**: Verify the participant's prior Study ID using the study's physical records or study card and enter it for Visit 2+. The app does not issue study cards or guarantee correct linking for a mistyped ID.
-
-### Sync-Window Workflow (2–3 Hours/Day)
-
-The home-PC server does not need to run continuously. A 2–3 hour daily window
-may work if every collector returns, keeps the app active until pending sync reaches zero, and the administrator verifies a backup:
-- **During the day**: Field collectors work offline. Visits are securely stored in encrypted local storage on each phone.
-- **During the sync window**: Collectors connect to the local Wi-Fi network, open the app, and wait for pending visits to sync with the configured home-PC server.
-- **Idempotency**: Retries and network drops are handled transparently using persistent idempotency keys without duplicate records or overwriting admin corrections.
-
-### Real Server Conflict Inbox (`/conflicts`) & Admin Resolution
-
-- Discrepancies (such as `participant_mismatch`, `duplicate_visit`, or `idempotency_collision`) return HTTP 409 Conflict and are stored in the server conflict inbox at `/conflicts` (`.local_data/conflicts.json`).
-- On the phone, conflicting records remain locally stored with a **Sync conflict** state, and automatic retries are paused.
-- In the Admin Portal (`lib/admin_main.dart`), administrators review conflicts in the **Sync conflicts** tab and resolve mismatches using the review controls. Verify the result against the retained phone copy.
-
-### Off-Device Backups & Disaster Recovery
-
-The automatic `.local_data/records.json.bak` snapshot is on the same disk and is
-**not** an off-device backup. Drive failure or system corruption will destroy both files.
-Use the official backup utility (`tool/backup_utility.ps1` or `tool/backup_utility.dart`) to create cryptographic SHA-256 verified off-device backups to an external USB drive or network share:
-
-Stop the sync server after all phones have synced and before backing up. On Windows, the command rejects destinations it cannot identify as removable, USB-attached, or remote network storage; a same-PC fixed-disk path is not accepted.
-
-- **Backup (post-sync window)**:
-  ```powershell
-  powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action Backup -Destination "E:\StudyBackups"
-  ```
-- **Verify integrity**:
-  ```powershell
-  powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action Verify -BackupPath "E:\StudyBackups\backup_20260923_180000"
-  ```
-- **Safe restore**:
-  ```powershell
-  powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action Restore -BackupPath "E:\StudyBackups\backup_20260923_180000" -ConfirmOverwrite
-  ```
-- **Recover after an interrupted restore, before restarting the server**:
-  ```powershell
-  powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action Recover -Target ".local_data"
-  ```
-- **Automated self-test**:
-  ```powershell
-  powershell -ExecutionPolicy Bypass -File tool/backup_utility.ps1 -Action SelfTest
-  ```
-
-*(Direct Dart alternatives: `dart run tool/backup_utility.dart backup|verify|restore|test`)*.
-
-If the primary `records.json` is corrupted on disk, the server automatically recovers from `.local_data/records.json.bak`. For full operator instructions, see [BACKUP_INSTRUCTIONS.md](tool/BACKUP_INSTRUCTIONS.md) and [LOCAL_SYNC.md](tool/LOCAL_SYNC.md).
-
-## Verification
-
-```powershell
-flutter analyze
-flutter test
-flutter build apk --debug -t lib/main.dart
-flutter build web -t lib/admin_main.dart
-```
-
-## Android release package
-
-Release builds use a private upload/signing key at
-`android/app/study-release.jks` with credentials in
-`android/key.properties`. Both files are ignored by source control. Back up
-both files securely: Android and Google Play updates must be signed with the
-same key.
-
-Create the signing key once:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File tool/create_release_signing.ps1
-```
-
-The command also creates a private ignored backup directory on this computer. Copy both backup files to a separate secure location before distributing an APK; a same-disk backup will not survive PC failure. Never distribute the signing files with the APK or commit them to source control.
-
-Create both the directly installable APK and Play Store App Bundle with:
+The signed shared Android APK is 1.0.0+5 and accepts the final HTTPS API URL at
+sign-in, so it does not need to be rebuilt just for domain setup. If a new APK
+is needed, the packaging script requires the existing private signing files,
+an off-device signing-backup confirmation, and a build number greater than any
+existing artifact. Build number 5 is shown only as a release example; the
+script refuses to replace an existing package. For a deliberate new package:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tool/package_android_release.ps1 `
-  -BuildName 1.0.0 -BuildNumber 1 -SigningBackupConfirmed
+  -BuildName 1.0.0 -BuildNumber 5 -PublicRelease `
+  -LocalApiBaseUrl https://api.YOUR-DOMAIN `
+  -SigningBackupConfirmed -NoPub
 ```
 
-For a LAN-connected collector package, you may include a default home-PC
-service address, but not a collector key or collector identity:
+Use a higher build number when 5 already exists in `dist/android/shared/`.
+Collectors enter their own number and key at runtime; never pass collector
+credentials or an identity to the package script.
+
+Follow [the VPS deployment guide](tool/vps/README.md) for credential
+generation, exact CORS-origin configuration, Caddy setup, release import,
+activation, and health checks. Configure the admin origin without a trailing
+slash. The backend must remain bound to loopback, with Caddy as its public TLS
+reverse proxy. Finish DNS, TLS, final admin build, phone-to-admin sync, and
+synthetic backup/restore checks before any live use.
+
+## Acceptance checks
+
+The acceptance kit has synthetic fixtures, Android and admin checklists, a
+results template, and release gates under [tool/acceptance](tool/acceptance/README.md).
+For functional admin UI testing before a public domain exists, use Option A in
+[the admin checklist](tool/acceptance/03_ADMIN_ACCEPTANCE_CHECKLIST.md): it
+requires a fresh local private-mode backend and a private admin web build. Do
+not point that harness at the production VPS. Option B and public deployment
+remain blocked until the domain, DNS, and TLS are ready.
+
+Run the recorded web build configuration regression check with:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tool/package_android_release.ps1 `
-  -BuildName 1.0.0 -BuildNumber 1 `
-  -LocalApiBaseUrl http://<computer-wifi-ip>:8787 `
-  -SigningBackupConfirmed
+powershell -ExecutionPolicy Bypass -File tool/tests/test_web_build_configuration.ps1
 ```
 
-The optional service address is a default, not a device assignment. Collectors
-enter their own number and key at runtime and can change phones by signing in
-on the new phone. A private Wi-Fi service address works only while the phone
-can reach that network; this LAN configuration is not a public-internet sync
-service.
+The suite verifies HTTPS-origin validation for public admin builds and checks
+that collector secrets and identity are absent from the admin Flutter build
+arguments. For all release gates and previously recorded test totals, see
+[the release gate checklist](tool/acceptance/06_RELEASE_GATE_CHECKLIST.md).
 
-Versioned artifacts and their SHA-256 checksums are written to
-`dist/android/shared/`. The script refuses to replace prior artifacts. Increase
-`BuildNumber` for every update, and retain the same signing key and
-application ID. The same APK can be installed on every collector phone.
+## Older local and Firebase paths
 
-Assign collector numbers and matching server keys to people, not phones. Each
-person enters their number and key when signing in; the most recent successful
-sign-in takes over that collector session. The switch
-`-SigningBackupConfirmed` is an acknowledgement, not an automated backup
-check: do not use it until both signing files have been copied off this PC and
-verified. The generic login and collision-safe ID paths have automated tests;
-before real-data distribution, configure the actual home-PC server and admin
-portal, verify an off-PC participant-data backup and restore, and run an
-offline-to-sync trial on more than one physical phone.
+The local LAN sync server and Firebase collector integration are separate
+development alternatives, not the current +5 public deployment path. LAN HTTP
+is restricted to trusted private networks and must never be exposed to the
+internet. The Firebase visit repository and hosted sign-in flow are not yet
+connected end-to-end. See [LOCAL_SYNC.md](tool/LOCAL_SYNC.md) for LAN-only
+development instructions.
