@@ -25,9 +25,9 @@ This directory contains the complete, grounded, and standardized **Acceptance Te
 | **[01_ANDROID_ACCEPTANCE_CHECKLIST.md](01_ANDROID_ACCEPTANCE_CHECKLIST.md)** | Step-by-step checklist for the Android collector app. Covers HTTPS URL enforcement, offline drafting, physical measurements, BMI and average BP formulas, missing reasons, receipt verification, app restarts, reconnection sync, and idempotency. | Android QA Engineers, Field Coordinators |
 | **[02_TWO_PHONE_COLLECTOR_HANDOVER_TEST.md](02_TWO_PHONE_COLLECTOR_HANDOVER_TEST.md)** | Protocol for two-phone collector handover. Validates single active session arbitration, HTTP 401 session expiration, zero offline data loss, session reclaim, sync of preserved records, and 16-digit CSPRNG Study ID collision safety. | Systems QA, Backend Engineers |
 | **[03_ADMIN_ACCEPTANCE_CHECKLIST.md](03_ADMIN_ACCEPTANCE_CHECKLIST.md)** | Checklist for the Administrator Web Portal. Covers exact CORS origin enforcement, status filtering, record search, detailed inspection of calculated vs missing metrics, CSV export format, and questionnaire preservation during admin edits. | Data Managers, Compliance Officers |
-| **[04_SYNTHETIC_TEST_FIXTURES.md](04_SYNTHETIC_TEST_FIXTURES.md)** | Fictional test profiles (Alpha, Beta, Gamma, Delta) and 32-character hexadecimal credential templates. Documents unlimited participant capacity and collector number scaling beyond 99. | Test Operators, Automation Engineers |
-| **[05_RESULTS_TEMPLATE.md](05_RESULTS_TEMPLATE.md)** | Standardized results capture template using `[AUTOMATED PASS]`, `[MANUAL PASS]`, `[NOT TESTED]`, and `[BLOCKED]` indicators. Includes environment capture tables, evidence log, and sign-off blocks. | QA Leads, Acceptance Auditors |
-| **[06_RELEASE_GATE_CHECKLIST.md](06_RELEASE_GATE_CHECKLIST.md)** | Release gating matrix dividing verification into Gate A (Tunnelable/Local, ready now) and Gate B (Public HTTPS & Domain, awaits DNS and domain acquisition). | Release Managers, DevOps, PI |
+| **[04_SYNTHETIC_TEST_FIXTURES.md](04_SYNTHETIC_TEST_FIXTURES.md)** | Fictional test profiles (Alpha, Beta, Gamma, Delta) and 32-character hexadecimal credential templates. Documents that there is **no application-imposed participant-count cap** (subject to host server hardware resources) and collector number scaling beyond 99. | Test Operators, Automation Engineers |
+| **[05_RESULTS_TEMPLATE.md](05_RESULTS_TEMPLATE.md)** | Standardized results capture template using `[AUTOMATED PASS]`, `[CODEX REPORTED PASS]`, `[MANUAL PASS]`, `[NOT TESTED]`, and `[BLOCKED]` indicators. Includes environment capture tables, infrastructure matrix, evidence log, and sign-off blocks. | QA Leads, Acceptance Auditors |
+| **[06_RELEASE_GATE_CHECKLIST.md](06_RELEASE_GATE_CHECKLIST.md)** | Release gating matrix dividing verification into Gate A (Local & Pre-Domain Verification) and Gate B (Public HTTPS & Live Domain Gates). | Release Managers, DevOps, PI |
 
 ---
 
@@ -46,12 +46,12 @@ graph TD
 ```
 
 1. **Step 1: Setup & Grounding:** Read `04_SYNTHETIC_TEST_FIXTURES.md` to understand expected participant profiles and calculation formulas.
-2. **Step 2: Gate A Confirmation:** Confirm all automated tests pass (244 passed, 12 skipped) and static analysis is clean.
-3. **Step 3: Android Verification:** Follow `01_ANDROID_ACCEPTANCE_CHECKLIST.md` on a physical Android device, validating offline persistence and calculated fields.
+2. **Step 2: Gate A Automated & Infrastructure Verification:** Confirm all worktree automated tests pass (`[AUTOMATED PASS]`: 244 regression, 64 store, 80 domain/sync, 24 web packaging, `flutter analyze` clean). Note that Codex has verified host firewall, systemd sandbox, isolated restore (`tool/vps/test-restore.sh`), and private encrypted Google Drive backup roundtrip (`tool/vps/test-encrypted-roundtrip.sh`) on the Ubuntu VPS (`[CODEX REPORTED PASS]`). Automatic backup timers remain disabled pending USB key retention.
+3. **Step 3: Android Verification:** Follow `01_ANDROID_ACCEPTANCE_CHECKLIST.md` on a physical Android device. Note that the existing signed shared +5 APK (`study-collector-1.0.0+5.apk`, SHA256: `1859d3afa4cef1da09987b443b9c107f20de7560cb0adc0ac05538c7f46c2982`) accepts its HTTPS server address dynamically at sign-in runtime and does not need to be rebuilt. Validate offline persistence, calculations, and receipt generation.
 4. **Step 4: Multi-Device Verification:** Run `02_TWO_PHONE_COLLECTOR_HANDOVER_TEST.md` using two phones to verify session arbitration and collision avoidance.
-5. **Step 5: Admin Web Verification:** Run `03_ADMIN_ACCEPTANCE_CHECKLIST.md` to verify browser CORS, search, CSV export, and note editing.
+5. **Step 5: Admin Web Verification:** Follow `03_ADMIN_ACCEPTANCE_CHECKLIST.md`. Functional UI testing is executed locally under Option A (Isolated Local Test Harness in private mode). Direct testing against the public VPS via raw HTTP SSH tunnel is `[BLOCKED]` because public mode enforces `X-Forwarded-Proto: https` and exact origin matching without weakening production security.
 6. **Step 6: Document Audit Trail:** Fill out `05_RESULTS_TEMPLATE.md` with screenshot references, log hashes, and signatures.
-7. **Step 7: Pre-Deployment Sign-Off:** Review `06_RELEASE_GATE_CHECKLIST.md` to confirm system readiness for Gate B (domain and live HTTPS activation).
+7. **Step 7: Pre-Deployment Sign-Off:** Review `06_RELEASE_GATE_CHECKLIST.md`. Confirm that while automated tests and Codex VPS drills have passed, Gate A as a whole requires manual device/admin completion, and Gate B remains blocked until domain acquisition, DNS propagation, and live TLS certificates are provisioned.
 
 ---
 
@@ -69,5 +69,13 @@ graph TD
   In generic release mode: `C<col>-<16 digits>`, generated via secure CSPRNG sequence (`upper * 100000000 + lower`). Provides $9 \times 10^{15}$ collision-free combinations per collector.
 - **Idempotency Guarantee:**  
   Upload retries for an existing record ID and matching `idempotencyKey` return HTTP `200 OK` with the existing record, without incrementing `revision` or creating duplicate rows.
-- **CORS Enforcement:**  
-  Public mode requires `LOCAL_SYNC_ALLOWED_ORIGINS` with exact HTTPS origins. Wildcard origins (`*`) and cleartext HTTP are strictly prohibited.
+- **CORS Enforcement & Public Mode:**  
+  Public mode requires `LOCAL_SYNC_ALLOWED_ORIGINS` with exact HTTPS origins and `X-Forwarded-Proto: https`. Wildcard origins (`*`) and cleartext HTTP are strictly prohibited. A raw SSH tunnel (`ssh -L`) forwarding HTTP directly to loopback port 8787 fails public-mode security guards; NEVER weaken production security for testing. Use Option A (isolated local private test harness) for functional UI testing, or wait for Gate B (domain & TLS) for production VPS verification.
+- **Participant Capacity:**  
+  The system architecture enforces **no application-imposed participant-count cap** across client SQLite storage, draft files, and server JSON state; actual operational capacity is bounded solely by host server hardware resources (disk space, RAM, CPU throughput).
+- **Safe Restore Testing Invariant:**  
+  NEVER run restore tests against a live production service or live study state. Restore verification must run in isolated staging directories with isolated safety backups and mocked/test service identifiers (e.g. `tool/vps/test-restore.sh`).
+- **Encrypted Offsite Backup Decoupled from Domain:**  
+  Offsite backup to private Google Drive (`study-crypt:`) has been verified via synthetic roundtrip on the VPS by Codex (`[CODEX REPORTED PASS]`, `tool/vps/test-encrypted-roundtrip.sh`) and does NOT require a purchased domain. Automated systemd timers (`plus5-offsite-backup.timer`) remain disabled pending physical USB recovery key retention and final production sign-off.
+- **Android APK Dynamic Server Address:**  
+  The signed shared +5 APK (`study-collector-1.0.0+5.apk`, SHA256: `1859d3afa4cef1da09987b443b9c107f20de7560cb0adc0ac05538c7f46c2982`) dynamically accepts its HTTPS server address at runtime and does NOT need to be recompiled for final domain deployment. Only the admin web client needs to be compiled with the real API base URL.

@@ -29,6 +29,7 @@ This checklist provides a rigid, end-to-end procedural manual to verify the Andr
      adb install -r build/app/outputs/flutter-apk/app-release.apk
      ```
    - Confirm app package name is `org.nutritionstudy.project2` and launches to the Sign-In screen.
+   - *Dynamic Endpoint Configuration:* The signed shared +5 APK dynamically accepts any valid HTTPS server address at runtime in the Sign-In screen. It does **not** need to be recompiled for final domain deployment.
 
 ---
 

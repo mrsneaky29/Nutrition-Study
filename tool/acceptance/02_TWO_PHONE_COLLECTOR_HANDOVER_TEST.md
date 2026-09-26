@@ -21,7 +21,7 @@ In field operations, a field worker may need to switch devices (e.g. battery dep
 
 ## 2. Equipment & Test Prerequisites
 
-- **Phone 1:** Android physical device (e.g., Device A) with `study-collector-1.0.0+5.apk` installed.
+- **Phone 1:** Android physical device (e.g., Device A) with `study-collector-1.0.0+5.apk` installed. (The APK accepts its HTTPS server address dynamically at runtime without recompilation).
 - **Phone 2:** Android physical device (e.g., Device B) with `study-collector-1.0.0+5.apk` installed.
 - **Server:** Active HTTPS server (or test HTTPS proxy) configured with public mode authentication:
   - Collector Number: `1` (normalized to server identity `C001`, generating Study ID prefix `C01-`)

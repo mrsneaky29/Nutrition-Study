@@ -3,10 +3,11 @@
 **Document Identifier:** `ATR-1.0.0+5-YYYYMMDD`  
 **Evaluation Scope:** Complete Client, Multi-Device Handover, Server, and Administrative Web Gating  
 **Standard Status Legend:**
-- `[AUTOMATED PASS]` – Verified via automated unit/integration/smoke test suite.
+- `[AUTOMATED PASS]` – Verified via automated unit/integration/smoke test runner in worktree (244 regression, 64 store, 80 domain/sync, 24 web packaging, flutter analyze).
+- `[CODEX REPORTED PASS]` – Verified on Ubuntu VPS by Codex (systemd sandbox, firewall rules, encrypted Drive roundtrip).
 - `[MANUAL PASS]` – Verified via manual operator execution following protocol checklist.
-- `[NOT TESTED]` – Step deferred to subsequent release gate or blocked by prerequisites.
-- `[BLOCKED]` – Test execution halted due to environment or software defect.
+- `[NOT TESTED]` – Step awaiting manual execution or deferred to subsequent release gate.
+- `[BLOCKED]` – Test execution halted or blocked by missing prerequisites (e.g. domain/DNS, TLS certificates, or public mode origin security guards).
 
 ---
 
@@ -21,7 +22,7 @@
 | **Test Device 2 (Phone 2)** | *e.g., Xiaomi Redmi Note 11* | Android OS Version: *12 (API 31)* |
 | **Admin Workstation** | *e.g., Windows 11 Pro 23H2 / Chrome 124* | Workstation IP / Origin |
 | **Server Host & OS** | *e.g., Ubuntu 24.04.4 LTS (Host VPS)* | Kernel / Dart 3.x standalone runtime |
-| **API Endpoint URL** | *e.g., https://api.nutritionstudy.org (or SSH tunnel)* | Scheme strictly HTTPS (or loopback tunnel) |
+| **API Endpoint URL** | *e.g., https://api.nutritionstudy.org (or Option A local harness at http://127.0.0.1:8787)* | Strictly HTTPS in public mode; Option A local private harness permits cleartext HTTP for UI testing. Raw SSH tunnel to public VPS is [BLOCKED] by public mode security guards. |
 | **Test Execution Date** | *YYYY-MM-DD* | Local Time: |
 | **Lead Acceptance Auditor**| | Role: Acceptance Kit Author / QA Lead |
 
@@ -73,6 +74,8 @@
 
 ### 2.3 Admin Web Portal Checklist (03_ADMIN_ACCEPTANCE_CHECKLIST.md)
 
+*(Testing Strategy Note: Functional UI verification of ADM-01 through ADM-14 can proceed locally under Option A [Isolated Local Test Harness, LOCAL_SYNC_PUBLIC_MODE=false]. Against the production VPS [Option B], direct testing over an HTTP SSH tunnel is marked `[BLOCKED]` because public mode rejects plain HTTP with 403 Forbidden and enforces exact HTTPS origin matching.)*
+
 | Test ID | Procedure Description | Expected Outcome | Status | Evidence Reference |
 | :--- | :--- | :--- | :---: | :--- |
 | **ADM-01** | Admin Portal authentication | 32-character admin key grants dashboard access | `[           ]` | SCR-20 |
@@ -92,6 +95,21 @@
 
 ---
 
+### 2.4 Infrastructure, Sandbox & Backup Verification (06_RELEASE_GATE_CHECKLIST.md)
+
+| Test ID | Procedure Description | Expected Outcome | Status | Evidence Reference |
+| :--- | :--- | :--- | :---: | :--- |
+| **INF-01** | Full regression & store test suite | `flutter test` passes 244 tests (64 store, 80 domain/sync) | `[AUTOMATED PASS]` | LOG-AUT-01 |
+| **INF-02** | Static analysis & linting | `flutter analyze` passes with 0 errors, 0 warnings | `[AUTOMATED PASS]` | LOG-AUT-02 |
+| **INF-03** | Web packaging configuration | `test_web_build_configuration.ps1` passes 24 tests | `[AUTOMATED PASS]` | LOG-AUT-03 |
+| **INF-04** | Signed Android release APK integrity | SHA256 matches `1859d3afa4cef1da09987b443b9c107f20de7560cb0adc0ac05538c7f46c2982` | `[AUTOMATED PASS]` | LOG-AUT-04 |
+| **INF-05** | Isolated state restore drill | `tool/vps/test-restore.sh` passes 35 assertions in clean sandbox | `[CODEX REPORTED PASS]` | LOG-CDX-01 |
+| **INF-06** | Encrypted offsite Drive backup roundtrip | `tool/vps/test-offsite-backup.sh` and `tool/vps/test-encrypted-roundtrip.sh` verify Google Drive OAuth, `study-crypt:`, encrypted upload, download, checksum, and isolated restore | `[CODEX REPORTED PASS]` | LOG-CDX-02 |
+| **INF-07** | VPS host firewall & systemd sandbox | UFW incoming DENY, 22/80/443 inbound, 8787 internal only; systemd sandbox verified on Ubuntu VPS | `[CODEX REPORTED PASS]` | LOG-CDX-03 |
+| **INF-08** | Admin Web over SSH tunnel on public VPS | Direct port-forwarded HTTP fails public mode `X-Forwarded-Proto` and exact HTTPS origin matching | `[BLOCKED]` | SEC-01 |
+
+---
+
 ## 3. Evidence Artifact Log
 
 | Reference ID | Artifact Type | Filename / URI / Checksum | Description / Content |
@@ -102,6 +120,9 @@
 | `SCR-25` | Screenshot | `evidence/scr_25_admin_alpha_detail.png`| Admin drawer showing BMI 23.5, BP 120/80 |
 | `LOG-04` | Terminal Log | `evidence/log_04_idempotency.txt` | HTTP 200 OK on duplicate sync retry |
 | `LOG-07` | Server Log | `evidence/log_07_collector_expired.txt`| HTTP 401 `collector_session_expired` |
+| `LOG-AUT-01` | Test Runner Log | `evidence/log_aut_01_flutter_test.txt` | Worktree test runner: 244 passed, 12 skipped |
+| `LOG-CDX-01` | VPS Test Log | `evidence/log_cdx_01_test_restore.txt` | Codex VPS restore test: 35 assertions passed |
+| `LOG-CDX-02` | VPS Test Log | `evidence/log_cdx_02_encrypted_roundtrip.txt` | Codex VPS Drive roundtrip: encrypted upload/restore |
 | `CSV-01` | Export File | `evidence/exported_records.csv` | Full CSV export showing base & `ncd_*` headers |
 
 ---
@@ -109,14 +130,17 @@
 ## 4. Overall Release Gating Summary & Sign-Off
 
 ### Gate Evaluation
-- **Total Tests Evaluated:** 42
-- **Pass Count:** `[   ]`
-- **Fail / Deviation Count:** `[   ]`
-- **Blocked Count:** `[   ]`
+- **Worktree Automated Suite:** `[AUTOMATED PASS]` (244 regression, 64 store, 80 domain/sync, 24 web packaging, flutter analyze)
+- **Ubuntu VPS Hardening & Backup Roundtrip:** `[CODEX REPORTED PASS]` (restore drill, encrypted Drive roundtrip, host firewall, systemd sandbox; timer disabled)
+- **Manual Mobile & Admin Field Protocols:** `[NOT TESTED]` (Android checklist, two-phone handover, Option A admin UI testing awaiting manual execution)
+- **Public VPS Admin Tunnel & Gate B Live Deployment:** `[BLOCKED]` (blocked pending domain, DNS, and TLS certificates)
 
-### Final Auditor Sign-Off
+*Note: Gate A as a whole is NOT 100% verified while manual browser/device checks remain unexecuted.*
+
+### Pre-Deployment Gating Status
 ```text
-[ ] ACCEPTED FOR PRE-DEPLOYMENT GATING (Ready for Gate B Domain & DNS Activation)
+[ ] APPROVED FOR LIVE FIELD DEPLOYMENT (Requires Gate A manual pass AND Gate B 100% pass)
+[X] PRE-DEPLOYMENT GATING IN PROGRESS (Automated & VPS drills passed; awaiting manual field testing & Gate B domain)
 [ ] REJECTED (Defects noted; requires remediation and re-testing)
 ```
 

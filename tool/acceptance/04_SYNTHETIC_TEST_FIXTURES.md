@@ -7,10 +7,12 @@ All data contained in this document is **100% synthetic and fictional**. It cont
 
 ## 1. Study Sizing & Architectural Invariants
 
-### 1.1 Unlimited Participant Capacity Guarantee
+### 1.1 No Application-Imposed Participant-Count Cap
 > [!IMPORTANT]
-> **Zero Artificial Participant Count Limit:**  
-> The Nutrition Study system (client, API, and local storage) **NEVER imposes an artificial participant count limit**. Neither the Android SQLite schema, the local draft store, the HTTP client, nor the backend server places an upper bound on the number of participants or visits that can be collected. The system architecture supports open-ended participant enrollment across all phases.
+> **No Application-Imposed Participant-Count Cap:**  
+> The Nutrition Study system (client, API, and local storage) enforces **no application-imposed participant-count cap**. Neither the Android SQLite schema, the local draft store, the HTTP client, nor the backend server places an artificial upper bound or license limit on the number of participants or visits that can be collected. The system architecture supports open-ended participant enrollment across all phases.
+>
+> *Hardware Resource Constraint Notice:* Actual operational capacity is not infinite; it is governed by host server hardware resources (available disk space for JSON state and backups, memory/RAM, and CPU throughput).
 
 ### 1.2 Collector Number Scaling
 As of release 1.0.0+5 (commit `faef803`), the legacy two-digit (99-collector) restriction has been completely eliminated. The system supports full collector numbering from `C01` (1) through `C100`, `C1000`, and above.

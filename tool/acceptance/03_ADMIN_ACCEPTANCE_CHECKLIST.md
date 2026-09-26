@@ -12,29 +12,54 @@
 The Administrator Web Portal provides centralized oversight for data collection, monitoring, conflict resolution, correction of administrative metadata, and research data export. The portal is decoupled from the Android collector app and operates with strict access controls:
 
 1. **Security Isolation:** The admin bundle does **not** embed administrator credentials or collector keys.
-2. **Exact Origin CORS:** In public mode (`LOCAL_SYNC_PUBLIC_MODE=true`), the backend strictly enforces `LOCAL_SYNC_ALLOWED_ORIGINS`. Wildcards (`*`) and cleartext HTTP origins are rejected at startup.
+2. **Exact Origin CORS & HTTPS Enforcement:** In public mode (`LOCAL_SYNC_PUBLIC_MODE=true`), the backend strictly enforces `LOCAL_SYNC_ALLOWED_ORIGINS` and requires `X-Forwarded-Proto: https`. Plain HTTP requests are rejected with `HTTP 403 Forbidden`. Wildcards (`*`) and cleartext HTTP origins are rejected at startup. The admin web client compiled in public mode strictly expects HTTPS.
 3. **Data Immutability & Audit Trails:** Administrative updates never destroy original raw questionnaire observations or participant answers.
+
+> [!WARNING]
+> **Production Security Invariant:**  
+> **NEVER weaken production security for testing!** Do NOT add plain HTTP origins to `LOCAL_SYNC_ALLOWED_ORIGINS` on the production server, and NEVER disable `LOCAL_SYNC_PUBLIC_MODE` on the production VPS. A raw HTTP port-forwarding tunnel (`ssh -L 8787:127.0.0.1:8787`) alone **CANNOT** satisfy public-mode backend guards:
+> - Public mode requires `X-Forwarded-Proto: https` (plain HTTP requests directly into port 8787 receive `403 Forbidden`).
+> - Public mode requires browser `Origin` to exactly match `LOCAL_SYNC_ALLOWED_ORIGINS` (a browser opening `http://127.0.0.1:8086` sends an HTTP origin that fails exact HTTPS origin matching).
+> - The admin web client compiled in public mode strictly expects HTTPS.
 
 ---
 
-## 2. Pre-Test Environmental Requirements
+## 2. Pre-Test Environmental Requirements & Valid Test Arrangements
 
-- **Admin Web Server:** Hosted on approved HTTPS domain (e.g. `https://admin.nutritionstudy.org`) or served locally via `tool/static_site_server.js` behind a secure tunnel (`http://127.0.0.1:8086`).
-- **Backend API Server:** Listening on public HTTPS (or tunnel at `http://127.0.0.1:8787` for Gate A).
-  - `LOCAL_SYNC_PUBLIC_MODE=true`
-  - `LOCAL_SYNC_ADMIN_KEY`: 32+ character hex string (e.g. `a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0`).
-  - `LOCAL_SYNC_ALLOWED_ORIGINS`: Exact origin matching admin web host.
-- **Test Dataset:** At least four synthetic records loaded on the server:
-  - `Fictional Participant Alpha` (Complete measurements: BMI 23.5, Avg BP 120/80)
-  - `Fictional Participant Beta` (Height missing: reason `declined`)
-  - `Fictional Participant Gamma` (Weight missing: reason `unable`)
-  - `Fictional Participant Delta` (BP missing: readings 1 & 2 `unable`)
+Acceptance testing of the Admin Web Portal MUST follow one of two valid test arrangements:
+
+### Option A: Isolated Local Test Harness (Recommended for Functional UI Testing)
+Used for functional acceptance testing of dashboard filtering, metrics calculation, and CSV export without requiring a live domain:
+- **Backend API Server:** Run an isolated local instance in non-public/private mode (`LOCAL_SYNC_PUBLIC_MODE=false` or unset) where cleartext HTTP and CORS `*` are permitted:
+  ```bash
+  dart tool/local_sync_server.dart --port=8787 --state-dir=/tmp/test-admin-state
+  ```
+- **Admin Web Server:** Serve the admin web bundle locally using `tool/static_site_server.js`:
+  ```bash
+  node tool/static_site_server.js 8086 build/web_admin
+  ```
+- **Browser Access:** Navigate to `http://127.0.0.1:8086`. Functional UI tests (Sections 2–5) can proceed locally in this isolated sandbox.
+
+### Option B: VPS Public Environment (Awaits Gate B Domain, DNS & TLS)
+Against the production VPS:
+- The VPS backend runs with `LOCAL_SYNC_PUBLIC_MODE=true` and `LOCAL_SYNC_ALLOWED_ORIGINS=https://admin.YOUR-DOMAIN`.
+- Port 8787 is strictly internal (loopback only) and Caddy is stopped pending domain acquisition.
+- Because a raw HTTP SSH tunnel cannot satisfy `X-Forwarded-Proto: https` or exact HTTPS origin matching without compromising production settings, direct admin portal testing through an SSH tunnel against the public VPS environment is marked **`[BLOCKED]`** until Gate B (domain, DNS, and TLS certificates) is deployed.
+
+### Test Dataset
+At least four synthetic records loaded on the server (see `04_SYNTHETIC_TEST_FIXTURES.md`):
+- `Fictional Participant Alpha` (Complete measurements: BMI 23.5, Avg BP 120/80)
+- `Fictional Participant Beta` (Height missing: reason `declined`)
+- `Fictional Participant Gamma` (Weight missing: reason `unable`)
+- `Fictional Participant Delta` (BP missing: readings 1 & 2 `unable`)
 
 ---
 
 ## 3. Step-by-Step Acceptance Checklist
 
 ### Section 1: Authorized Access & Exact CORS Enforcement
+
+*(Note: Sections 2–5 can be validated functionally under Option A. CORS origin enforcement steps 1.4–1.5 validate public-mode origin guards.)*
 
 | Step # | Test Action | Expected Result | Pass/Fail Criteria |
 | :--- | :--- | :--- | :--- |
