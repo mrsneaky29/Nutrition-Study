@@ -29,7 +29,10 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "org.nutritionstudy.project2"
+        applicationId = if (System.getenv("STUDY_SIDE_BY_SIDE_TEST") == "true")
+            "org.nutritionstudy.project2.plus5test" else "org.nutritionstudy.project2"
+        manifestPlaceholders["studyAppLabel"] = if (System.getenv("STUDY_SIDE_BY_SIDE_TEST") == "true")
+            "Study Collector +6 Test" else "Study Collector"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

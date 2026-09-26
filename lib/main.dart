@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 
 import 'collector/collector_cloud_controller.dart';
 import 'collector_auth/secure_installation_session_store.dart';
@@ -13,6 +15,9 @@ import 'presentation/presentation_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  }
   final configuration = StudyRuntimeConfiguration.fromEnvironment();
   if (configuration.isLocalDemo) {
     runApp(const MyApp());

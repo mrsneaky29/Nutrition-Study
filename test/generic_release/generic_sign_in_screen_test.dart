@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:project2/collector_auth/collector_qr_payload.dart';
+import 'package:project2/collector_auth/collector_qr_scanner_contract.dart';
 import 'package:project2/presentation/sign_in_screen.dart';
 
 void main() {
-  testWidgets('public setup accepts only clean HTTPS server URLs', (
+  testWidgets('public setup uses the preconfigured server and scans QR', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(430, 900);
@@ -11,6 +13,16 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
+    const serverUrl = 'https://collector.example.org/api';
+    final scanner = _FakeCollectorQrScanner(
+      QrScannerSuccess(
+        CollectorQrPayload(
+          version: 1,
+          collectorNumber: 7,
+          collectorKey: 'synthetic-collector-key',
+        ),
+      ),
+    );
     CollectorAccessInput? submitted;
     await tester.pumpWidget(
       MaterialApp(
@@ -18,33 +30,20 @@ void main() {
           body: SignInScreen(
             showLocalSetup: true,
             requireHttps: true,
+            initialServerUrl: serverUrl,
+            scanner: scanner,
             onSignIn: (value) => submitted = value,
           ),
         ),
       ),
     );
-    expect(find.text('Server address'), findsOneWidget);
-
-    await tester.enterText(find.byType(TextFormField).at(0), '7');
-    await tester.enterText(
-      find.byType(TextFormField).at(1),
-      'http://collector.example.org',
-    );
-    await tester.enterText(
-      find.byType(TextFormField).at(2),
-      'synthetic-collector-key',
-    );
-    await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
-    await tester.pump();
-    expect(submitted, isNull);
-
-    await tester.enterText(
-      find.byType(TextFormField).at(1),
-      'https://collector.example.org/api',
-    );
-    await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
-    await tester.pump();
-    expect(submitted?.serverUrl, 'https://collector.example.org/api');
+    expect(find.byType(TextFormField), findsNothing);
+    await tester.tap(find.text('Scan sign-in QR'));
+    await tester.pumpAndSettle();
+    expect(scanner.expectedServerUrl, serverUrl);
+    expect(scanner.requireHttps, isTrue);
+    expect(submitted?.collectorCode, 'C007');
+    expect(submitted?.serverUrl, serverUrl);
   });
 
   testWidgets(
@@ -90,4 +89,22 @@ void main() {
       expect(submitted?.accessKey, 'synthetic-collector-key');
     },
   );
+}
+
+class _FakeCollectorQrScanner implements CollectorQrScannerContract {
+  _FakeCollectorQrScanner(this.result);
+
+  final QrScannerResult result;
+  String? expectedServerUrl;
+  bool? requireHttps;
+
+  @override
+  Future<QrScannerResult> scanCode({
+    String? expectedServerUrl,
+    bool requireHttps = true,
+  }) async {
+    this.expectedServerUrl = expectedServerUrl;
+    this.requireHttps = requireHttps;
+    return result;
+  }
 }

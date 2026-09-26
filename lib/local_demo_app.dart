@@ -444,9 +444,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
 
     if (number == null || number < BigInt.one) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Collector number must be positive.'),
-        ),
+        const SnackBar(content: Text('Collector number must be positive.')),
       );
       return;
     }
@@ -726,7 +724,10 @@ class _LocalDemoAppState extends State<LocalDemoApp>
       if (_genericRelease && widget.cloudController == null) {
         final storage = widget.secureStorage ?? const FlutterSecureStorage();
         _savedServerUrl =
-            await storage.read(key: 'local_server_url') ?? _savedServerUrl;
+            _publicRelease &&
+                HttpLocalRecordSyncClient.configuredApiBaseUrl.isNotEmpty
+            ? HttpLocalRecordSyncClient.configuredApiBaseUrl
+            : await storage.read(key: 'local_server_url') ?? _savedServerUrl;
         _savedApiKey = await storage.read(key: 'local_collector_key') ?? '';
         final token = await storage.read(key: 'local_session_token');
         final code = await storage.read(key: 'local_collector_code');
