@@ -1382,14 +1382,15 @@ class _RecordEditSheetState extends State<_RecordEditSheet> {
                 ),
               ),
               const SizedBox(height: 14),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 10,
+                runSpacing: 10,
                 children: [
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: const Text('Cancel'),
                   ),
-                  const SizedBox(width: 10),
                   FilledButton.icon(
                     onPressed: _save,
                     icon: const Icon(Icons.save_outlined),
@@ -1502,190 +1503,307 @@ ParticipantIdPolicy _policyForExistingId(String studyId) {
   );
 }
 
-class _RecordDetails extends StatelessWidget {
+class _RecordDetails extends StatefulWidget {
   const _RecordDetails({
     required this.record,
     required this.readOnly,
     required this.onEdit,
     required this.onArchiveToggle,
   });
+
   final VisitRecord record;
   final bool readOnly;
   final VoidCallback onEdit;
   final VoidCallback onArchiveToggle;
+
   @override
-  Widget build(BuildContext context) => SafeArea(
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(24, 18, 24, 30),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 38,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFFC8D0DD),
-                borderRadius: BorderRadius.circular(99),
-              ),
-            ),
-          ),
-          const SizedBox(height: 22),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${record.participant.studyId} · Visit ${record.visitNumber}',
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            record.isArchived ? 'Archived record summary' : 'Record summary',
-            style: const TextStyle(color: Color(0xFF667085)),
-          ),
-          const SizedBox(height: 20),
-          if (record.syncState == SyncState.failed) ...[
-            Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFDE8E8),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFF8B4B4)),
-              ),
-              child: const Row(
+  State<_RecordDetails> createState() => _RecordDetailsState();
+}
+
+class _RecordDetailsState extends State<_RecordDetails> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final record = widget.record;
+    final readOnly = widget.readOnly;
+    return SafeArea(
+      child: FractionallySizedBox(
+        heightFactor: 0.93,
+        child: Scrollbar(
+          controller: _scrollController,
+          thumbVisibility: true,
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 18, 24, 30),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.warning_amber_rounded, color: Color(0xFFCC4B4B)),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Sync conflict detected: this record was flagged during upload. Use "Edit record" to update details or resolve discrepancies.',
-                      style: TextStyle(color: Color(0xFF9B1C1C), fontSize: 13),
+                  Center(
+                    child: Container(
+                      width: 38,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFC8D0DD),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
                     ),
+                  ),
+                  const SizedBox(height: 22),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${record.participant.studyId} · Visit ${record.visitNumber}',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    record.isArchived
+                        ? 'Archived record summary'
+                        : 'Record summary',
+                    style: const TextStyle(color: Color(0xFF667085)),
+                  ),
+                  const SizedBox(height: 20),
+                  if (record.syncState == SyncState.failed) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFDE8E8),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFF8B4B4)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            color: Color(0xFFCC4B4B),
+                          ),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Sync conflict detected: this record was flagged during upload. Use "Edit record" to update details or resolve discrepancies.',
+                              style: TextStyle(
+                                color: Color(0xFF9B1C1C),
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  _DetailRow(
+                    label: 'Participant',
+                    value: record.participant.name,
+                  ),
+                  _DetailRow(
+                    label: 'Study ID',
+                    value: record.participant.studyId,
+                  ),
+                  _DetailRow(
+                    label: 'Phone',
+                    value: record.participant.indianPhone,
+                  ),
+                  _DetailRow(label: 'Collector', value: record.collectorId),
+                  _DetailRow(
+                    label: 'Visit number',
+                    value: 'Visit ${record.visitNumber}',
+                  ),
+                  _DetailRow(label: 'Record ID', value: record.id),
+                  _DetailRow(
+                    label: 'Visit status',
+                    value: record.status == VisitStatus.submitted
+                        ? 'Submitted'
+                        : 'Draft',
+                  ),
+                  _DetailRow(
+                    label: 'Sync status',
+                    value: record.syncState == SyncState.failed
+                        ? 'Sync conflict / attention'
+                        : _syncLabel(record.syncState),
+                  ),
+                  _DetailRow(
+                    label: 'Review state',
+                    value: record.reviewState == NeutralReviewState.reviewed
+                        ? 'Reviewed'
+                        : 'Pending review',
+                  ),
+                  if (record.questionnaire case final questionnaire?) ...[
+                    const Divider(height: 28),
+                    const Text(
+                      'Questionnaire and measurements',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    _DetailRow(
+                      label: 'Study site',
+                      value: questionnaire.studySite,
+                    ),
+                    _DetailRow(
+                      label: 'Age / sex',
+                      value: '${questionnaire.age} · ${questionnaire.sex}',
+                    ),
+                    _DetailRow(
+                      label: 'Height',
+                      value: _measurementDetail(
+                        questionnaire.heightCm,
+                        'cm',
+                        questionnaire.heightMissingReason,
+                      ),
+                    ),
+                    _DetailRow(
+                      label: 'Weight',
+                      value: _measurementDetail(
+                        questionnaire.weightKg,
+                        'kg',
+                        questionnaire.weightMissingReason,
+                      ),
+                    ),
+                    _DetailRow(
+                      label: 'Waist',
+                      value: _measurementDetail(
+                        questionnaire.waistCm,
+                        'cm',
+                        questionnaire.waistMissingReason,
+                      ),
+                    ),
+                    _DetailRow(
+                      label: 'BP1',
+                      value: _bloodPressureDetail(
+                        questionnaire.bpOneSystolic,
+                        questionnaire.bpOneDiastolic,
+                        questionnaire.bpOneMissingReason,
+                      ),
+                    ),
+                    _DetailRow(
+                      label: 'BP2',
+                      value: _bloodPressureDetail(
+                        questionnaire.bpTwoSystolic,
+                        questionnaire.bpTwoDiastolic,
+                        questionnaire.bpTwoMissingReason,
+                      ),
+                    ),
+                    _DetailRow(
+                      label: 'BMI',
+                      value:
+                          questionnaire.bmi?.toStringAsFixed(1) ??
+                          'Not recorded',
+                    ),
+                    _DetailRow(
+                      label: 'Average BP',
+                      value:
+                          questionnaire.averageSystolic == null ||
+                              questionnaire.averageDiastolic == null
+                          ? 'Not recorded'
+                          : '${questionnaire.averageSystolic!.toStringAsFixed(0)} / ${questionnaire.averageDiastolic!.toStringAsFixed(0)} mmHg',
+                    ),
+                    _DetailRow(
+                      label: 'Activity',
+                      value: '${questionnaire.weeklyActiveMinutes} min/week',
+                    ),
+                    _DetailRow(
+                      label: 'Sleep',
+                      value: '${questionnaire.sleepHours} hours/night',
+                    ),
+                  ],
+                  if (record.stepTwoPlaceholderNote != null)
+                    _DetailRow(
+                      label: 'Optional Step 2 note',
+                      value: record.stepTwoPlaceholderNote!,
+                    ),
+                  _DetailRow(
+                    label: 'Archive status',
+                    value: record.isArchived ? 'Archived' : 'Active',
+                  ),
+                  _DetailRow(
+                    label: 'Last updated',
+                    value: _fullDate(record.updatedAt),
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: readOnly ? null : widget.onEdit,
+                        icon: const Icon(Icons.edit_outlined),
+                        label: const Text('Edit record'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: readOnly ? null : widget.onArchiveToggle,
+                        icon: Icon(
+                          record.isArchived
+                              ? Icons.unarchive_outlined
+                              : Icons.inventory_2_outlined,
+                        ),
+                        label: Text(
+                          record.isArchived ? 'Restore visit' : 'Archive visit',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (readOnly)
+                    const Text(
+                      'This is the last loaded view. Reconnect to the home server before making changes.',
+                      style: TextStyle(color: Color(0xFF795500), fontSize: 13),
+                    ),
+                  const Text(
+                    'Archiving is reversible. This portal never provides a permanent delete action.',
+                    style: TextStyle(color: Color(0xFF667085), fontSize: 13),
                   ),
                 ],
               ),
             ),
-          ],
-          _DetailRow(label: 'Participant', value: record.participant.name),
-          _DetailRow(label: 'Study ID', value: record.participant.studyId),
-          _DetailRow(label: 'Phone', value: record.participant.indianPhone),
-          _DetailRow(label: 'Collector', value: record.collectorId),
-          _DetailRow(
-            label: 'Visit number',
-            value: 'Visit ${record.visitNumber}',
           ),
-          _DetailRow(label: 'Record ID', value: record.id),
-          _DetailRow(
-            label: 'Visit status',
-            value: record.status == VisitStatus.submitted
-                ? 'Submitted'
-                : 'Draft',
-          ),
-          _DetailRow(
-            label: 'Sync status',
-            value: record.syncState == SyncState.failed
-                ? 'Sync conflict / attention'
-                : _syncLabel(record.syncState),
-          ),
-          _DetailRow(
-            label: 'Review state',
-            value: record.reviewState == NeutralReviewState.reviewed
-                ? 'Reviewed'
-                : 'Pending review',
-          ),
-          if (record.questionnaire case final questionnaire?) ...[
-            const Divider(height: 28),
-            const Text(
-              'Questionnaire and measurements',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
-            _DetailRow(label: 'Study site', value: questionnaire.studySite),
-            _DetailRow(
-              label: 'Age / sex',
-              value: '${questionnaire.age} · ${questionnaire.sex}',
-            ),
-            _DetailRow(
-              label: 'BMI',
-              value: questionnaire.bmi?.toStringAsFixed(1) ?? 'Not recorded',
-            ),
-            _DetailRow(
-              label: 'Average BP',
-              value:
-                  questionnaire.averageSystolic == null ||
-                      questionnaire.averageDiastolic == null
-                  ? 'Not recorded'
-                  : '${questionnaire.averageSystolic!.toStringAsFixed(0)} / ${questionnaire.averageDiastolic!.toStringAsFixed(0)} mmHg',
-            ),
-            _DetailRow(
-              label: 'Activity',
-              value: '${questionnaire.weeklyActiveMinutes} min/week',
-            ),
-            _DetailRow(
-              label: 'Sleep',
-              value: '${questionnaire.sleepHours} hours/night',
-            ),
-          ],
-          if (record.stepTwoPlaceholderNote != null)
-            _DetailRow(
-              label: 'Optional Step 2 note',
-              value: record.stepTwoPlaceholderNote!,
-            ),
-          _DetailRow(
-            label: 'Archive status',
-            value: record.isArchived ? 'Archived' : 'Active',
-          ),
-          _DetailRow(label: 'Last updated', value: _fullDate(record.updatedAt)),
-          const SizedBox(height: 16),
-          Wrap(
-            alignment: WrapAlignment.end,
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              FilledButton.icon(
-                onPressed: readOnly ? null : onEdit,
-                icon: const Icon(Icons.edit_outlined),
-                label: const Text('Edit record'),
-              ),
-              OutlinedButton.icon(
-                onPressed: readOnly ? null : onArchiveToggle,
-                icon: Icon(
-                  record.isArchived
-                      ? Icons.unarchive_outlined
-                      : Icons.inventory_2_outlined,
-                ),
-                label: Text(
-                  record.isArchived ? 'Restore visit' : 'Archive visit',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (readOnly)
-            const Text(
-              'This is the last loaded view. Reconnect to the home server before making changes.',
-              style: TextStyle(color: Color(0xFF795500), fontSize: 13),
-            ),
-          const Text(
-            'Archiving is reversible. This portal never provides a permanent delete action.',
-            style: TextStyle(color: Color(0xFF667085), fontSize: 13),
-          ),
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
+
+String _measurementDetail(num? value, String unit, String? missingReason) {
+  if (value == null) return _missingMeasurementDetail(missingReason);
+  final formatted = value == value.toInt() ? '${value.toInt()}' : '$value';
+  return '$formatted $unit';
+}
+
+String _bloodPressureDetail(
+  int? systolic,
+  int? diastolic,
+  String? missingReason,
+) {
+  if (systolic == null || diastolic == null) {
+    return _missingMeasurementDetail(missingReason);
+  }
+  return '$systolic / $diastolic mmHg';
+}
+
+String _missingMeasurementDetail(String? reason) => switch (reason) {
+  'declined' => 'Participant declined',
+  'unable' => 'Unable to measure',
+  _ => 'Not recorded',
+};
 
 class _DetailRow extends StatelessWidget {
   const _DetailRow({required this.label, required this.value});

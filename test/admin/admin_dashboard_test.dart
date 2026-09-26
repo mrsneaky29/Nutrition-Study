@@ -114,13 +114,16 @@ void main() {
       );
 
       await tester.pumpWidget(
-        MaterialApp(home: AdminDashboard(repository: repository, admin: admin)),
+        MaterialApp(
+          home: AdminDashboard(repository: repository, admin: admin),
+        ),
       );
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Demo Participant 1').first);
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(find.text('Edit record'));
       await tester.tap(find.text('Edit record'));
       await tester.pumpAndSettle();
 
@@ -209,6 +212,108 @@ void main() {
     );
   });
 
+  testWidgets('admin record details show raw and missing measurements', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final repository = createAdminDemoRepository();
+    final completeRecord = (await repository.getById('visit-101', admin))!;
+    final missingRecord = (await repository.getById('visit-102', admin))!;
+    await repository.saveAdminRecord(
+      actor: admin,
+      record: completeRecord.copyWith(questionnaire: _completeQuestionnaire),
+    );
+    await repository.saveAdminRecord(
+      actor: admin,
+      record: missingRecord.copyWith(questionnaire: _missingQuestionnaire),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AdminDashboard(repository: repository, admin: admin),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Demo Participant 1').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Height'), findsOneWidget);
+    expect(find.text('175 cm'), findsOneWidget);
+    expect(find.text('Weight'), findsOneWidget);
+    expect(find.text('78 kg'), findsOneWidget);
+    expect(find.text('Waist'), findsOneWidget);
+    expect(find.text('88 cm'), findsOneWidget);
+    expect(find.text('BP1'), findsOneWidget);
+    expect(find.text('125 / 82 mmHg'), findsOneWidget);
+    expect(find.text('BP2'), findsOneWidget);
+    expect(find.text('122 / 80 mmHg'), findsOneWidget);
+    expect(find.text('BMI'), findsOneWidget);
+    expect(find.text('25.5'), findsOneWidget);
+    expect(find.text('Average BP'), findsOneWidget);
+    expect(find.text('124 / 81 mmHg'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.close).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Demo Participant 2').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Unable to measure'), findsNWidgets(3));
+    expect(find.text('Participant declined'), findsNWidgets(2));
+    expect(find.text('Not recorded'), findsNWidgets(2));
+    expect(find.text('BMI'), findsOneWidget);
+    expect(find.text('Average BP'), findsOneWidget);
+  });
+
+  testWidgets('admin record details scroll on a phone-sized viewport', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final repository = createAdminDemoRepository();
+    final original = (await repository.getById('visit-101', admin))!;
+    await repository.saveAdminRecord(
+      actor: admin,
+      record: original.copyWith(questionnaire: _completeQuestionnaire),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AdminDashboard(repository: repository, admin: admin),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Demo Participant 1').hitTestable(),
+      240,
+      scrollable: find
+          .descendant(
+            of: find.byType(CustomScrollView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.tap(find.text('Demo Participant 1').first);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.text('122 / 80 mmHg'));
+    expect(find.text('122 / 80 mmHg'), findsOneWidget);
+    await tester.ensureVisible(find.text('Edit record'));
+    await tester.tap(find.text('Edit record'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit P012'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('background polling keeps the loaded dashboard visible', (
     tester,
   ) async {
@@ -249,7 +354,9 @@ void main() {
         ..seed(await seedRepository.listVisibleTo(admin));
 
       await tester.pumpWidget(
-        MaterialApp(home: AdminDashboard(repository: repository, admin: admin)),
+        MaterialApp(
+          home: AdminDashboard(repository: repository, admin: admin),
+        ),
       );
       await tester.pumpAndSettle();
       expect(find.text('Demo Participant 1'), findsOneWidget);
@@ -369,31 +476,30 @@ void main() {
     },
   );
 
-  testWidgets(
-    'admin dashboard searches records by phone number',
-    (tester) async {
-      tester.view.physicalSize = const Size(1440, 1200);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final repository = createAdminDemoRepository();
+  testWidgets('admin dashboard searches records by phone number', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = createAdminDemoRepository();
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: AdminDashboard(repository: repository, admin: admin),
-        ),
-      );
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AdminDashboard(repository: repository, admin: admin),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextField), '+919000000003');
-      await tester.pump();
+    await tester.enterText(find.byType(TextField), '+919000000003');
+    await tester.pump();
 
-      expect(find.text('Demo Participant 3'), findsOneWidget);
-      expect(find.text('Demo Participant 1'), findsNothing);
-      expect(find.text('Demo Participant 2'), findsNothing);
-      expect(find.text('Demo Participant 4'), findsNothing);
-    },
-  );
+    expect(find.text('Demo Participant 3'), findsOneWidget);
+    expect(find.text('Demo Participant 1'), findsNothing);
+    expect(find.text('Demo Participant 2'), findsNothing);
+    expect(find.text('Demo Participant 4'), findsNothing);
+  });
 
   testWidgets('CSV export follows the search and status filter', (
     tester,
@@ -467,6 +573,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Drafts').last);
     await tester.pumpAndSettle();
+    expect(find.text('Drafts'), findsOneWidget);
+    expect(find.text('Demo Participant 4'), findsOneWidget);
+    expect(find.text('Demo Participant 1'), findsNothing);
+    expect(find.text('Demo Participant 2'), findsNothing);
+    expect(find.text('Demo Participant 3'), findsNothing);
     copiedCsv = null;
     await tester.ensureVisible(find.text('Copy CSV'));
     await tester.tap(find.text('Copy CSV'));
@@ -618,7 +729,9 @@ void main() {
     ];
 
     await tester.pumpWidget(
-      MaterialApp(home: AdminDashboard(repository: repository, admin: admin)),
+      MaterialApp(
+        home: AdminDashboard(repository: repository, admin: admin),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -666,7 +779,9 @@ void main() {
       ];
 
       await tester.pumpWidget(
-        MaterialApp(home: AdminDashboard(repository: repository, admin: admin)),
+        MaterialApp(
+          home: AdminDashboard(repository: repository, admin: admin),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -681,7 +796,9 @@ void main() {
       await tester.enterText(studyIdField, 'C01-000042');
       await tester.pump();
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Resolve Conflict').last);
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'Resolve Conflict').last,
+      );
       await tester.pumpAndSettle();
 
       expect(repository.lastResolvedId, 'conflict-99');
@@ -692,13 +809,65 @@ void main() {
     },
   );
 
-  test('Participant ID validation contract supports C01-000001 and legacy P001', () {
-    expect(isValidParticipantStudyId('C01-000001'), isTrue);
-    expect(isValidParticipantStudyId('P001'), isTrue);
-    expect(isValidParticipantStudyId('P012'), isTrue);
-    expect(isValidParticipantStudyId('invalid-id'), isFalse);
-  });
+  test(
+    'Participant ID validation contract supports C01-000001 and legacy P001',
+    () {
+      expect(isValidParticipantStudyId('C01-000001'), isTrue);
+      expect(isValidParticipantStudyId('P001'), isTrue);
+      expect(isValidParticipantStudyId('P012'), isTrue);
+      expect(isValidParticipantStudyId('invalid-id'), isFalse);
+    },
+  );
 }
+
+const _completeQuestionnaire = NcdQuestionnaire(
+  studySite: 'Site A',
+  age: 42,
+  sex: 'female',
+  education: 'Tertiary',
+  employment: 'Employed',
+  fruitFrequency: 'Daily',
+  vegetableFrequency: 'Daily',
+  sugaryDrinkFrequency: 'Never',
+  processedFoodFrequency: 'Never',
+  activeDaysPerWeek: 4,
+  activeMinutesPerDay: 45,
+  sleepHours: 7,
+  heightCm: 175,
+  weightKg: 78,
+  waistCm: 88,
+  bpOneSystolic: 125,
+  bpOneDiastolic: 82,
+  bpTwoSystolic: 122,
+  bpTwoDiastolic: 80,
+);
+
+const _missingQuestionnaire = NcdQuestionnaire(
+  studySite: 'Site B',
+  age: 51,
+  sex: 'male',
+  education: 'Secondary',
+  employment: 'Employed',
+  fruitFrequency: 'Weekly',
+  vegetableFrequency: 'Daily',
+  sugaryDrinkFrequency: 'Weekly',
+  processedFoodFrequency: 'Monthly',
+  activeDaysPerWeek: 2,
+  activeMinutesPerDay: 30,
+  sleepHours: 6,
+  heightCm: null,
+  weightKg: null,
+  waistCm: null,
+  bpOneSystolic: null,
+  bpOneDiastolic: null,
+  bpTwoSystolic: null,
+  bpTwoDiastolic: null,
+  heightMissingReason: 'declined',
+  weightMissingReason: 'unable',
+  waistMissingReason: 'unable',
+  bpOneMissingReason: 'declined',
+  bpTwoMissingReason: 'unable',
+);
 
 class _IntermittentRepository extends InMemoryVisitRepository {
   bool available = true;
