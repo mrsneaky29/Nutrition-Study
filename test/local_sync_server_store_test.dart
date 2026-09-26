@@ -43,16 +43,18 @@ void main() {
         expect(store.records().single['participant']['studyId'], 'P001');
         expect(store.getConflict(conflictId)!['status'], 'pending');
 
-      await store.resolveConflict(conflictId, {
-        'recordId': 'visit-2',
-        'studyId': 'P002',
-      });
-      expect(
-        (await store.resolveConflict(conflictId, {'recordId': 'visit-2'}))['status'],
-        'resolved',
-      );
-      await _expectConflict(store.reviewConflict(conflictId));
-      expect(store.length, 2);
+        await store.resolveConflict(conflictId, {
+          'recordId': 'visit-2',
+          'studyId': 'P002',
+        });
+        expect(
+          (await store.resolveConflict(conflictId, {
+            'recordId': 'visit-2',
+          }))['status'],
+          'resolved',
+        );
+        await _expectConflict(store.reviewConflict(conflictId));
+        expect(store.length, 2);
         expect(
           store.records().firstWhere(
             (r) => r['id'] == 'visit-1',
@@ -373,6 +375,118 @@ void main() {
   });
 
   group('AccessKeys multi-collector configuration', () {
+    const publicCollector = 'a-very-long-independent-collector-secret-000001';
+    const publicAdmin = 'a-very-long-independent-admin-secret-00000001';
+    const publicOrigin = 'https://admin.example.org';
+
+    test('public mode requires mapped strong keys and exact origins', () {
+      final keys = AccessKeys.fromEnvironment({
+        'LOCAL_SYNC_PUBLIC_MODE': 'true',
+        'LOCAL_SYNC_COLLECTOR_KEYS': 'C007:$publicCollector',
+        'LOCAL_SYNC_ADMIN_KEY': publicAdmin,
+        'LOCAL_SYNC_ALLOWED_ORIGINS': publicOrigin,
+      });
+
+      expect(keys, isNotNull);
+      expect(keys!.publicMode, isTrue);
+      expect(keys.requireCollectorSession, isTrue);
+      expect(keys.collectorIdForKey(publicCollector), 'C007');
+      expect(keys.allowedOrigins, {publicOrigin});
+    });
+
+    test('public mode accepts C1000+ collector IDs', () {
+      final keys = AccessKeys.fromEnvironment({
+        'LOCAL_SYNC_PUBLIC_MODE': 'true',
+        'LOCAL_SYNC_COLLECTOR_KEYS': 'C1000:$publicCollector',
+        'LOCAL_SYNC_ADMIN_KEY': publicAdmin,
+        'LOCAL_SYNC_ALLOWED_ORIGINS': publicOrigin,
+      });
+
+      expect(keys, isNotNull);
+      expect(keys!.publicMode, isTrue);
+      expect(keys.collectorIdForKey(publicCollector), 'C1000');
+    });
+
+    test(
+      'public mode fails closed for weak, shared, legacy, or wildcard config',
+      () {
+        Map<String, String> config({
+          String collector = publicCollector,
+          String admin = publicAdmin,
+          String origin = publicOrigin,
+          String? legacy,
+          String? singularCollector,
+        }) {
+          final values = <String, String>{
+            'LOCAL_SYNC_PUBLIC_MODE': 'true',
+            'LOCAL_SYNC_COLLECTOR_KEYS': 'C001:$collector',
+            'LOCAL_SYNC_ADMIN_KEY': admin,
+            'LOCAL_SYNC_ALLOWED_ORIGINS': origin,
+          };
+          if (legacy != null) values['LOCAL_SYNC_KEY'] = legacy;
+          if (singularCollector != null) {
+            values['LOCAL_SYNC_COLLECTOR_KEY'] = singularCollector;
+          }
+          return values;
+        }
+
+        expect(
+          () => AccessKeys.fromEnvironment(config(collector: 'short-key')),
+          throwsFormatException,
+        );
+        expect(
+          () => AccessKeys.fromEnvironment(config(admin: publicCollector)),
+          throwsFormatException,
+        );
+        expect(
+          () => AccessKeys.fromEnvironment(config(origin: '*')),
+          throwsFormatException,
+        );
+        expect(
+          () => AccessKeys.fromEnvironment(
+            config(origin: 'https://admin.example.org/'),
+          ),
+          throwsFormatException,
+        );
+        expect(
+          () => AccessKeys.fromEnvironment(
+            config(origin: 'http://admin.example.org'),
+          ),
+          throwsFormatException,
+        );
+        expect(
+          () => AccessKeys.fromEnvironment(
+            config(legacy: 'old-shared-secret-1234567890'),
+          ),
+          throwsFormatException,
+        );
+        expect(
+          () => AccessKeys.fromEnvironment(
+            config(singularCollector: publicCollector),
+          ),
+          throwsFormatException,
+        );
+        expect(
+          () => AccessKeys.fromEnvironment({
+            'LOCAL_SYNC_PUBLIC_MODE': 'sometimes',
+          }),
+          throwsFormatException,
+        );
+      },
+    );
+
+    test(
+      'legacy shared-key mode stays available when public mode is absent',
+      () {
+        final keys = AccessKeys.fromEnvironment({
+          'LOCAL_SYNC_KEY': 'legacy-local-demo-key-123',
+        });
+        expect(keys, isNotNull);
+        expect(keys!.publicMode, isFalse);
+        expect(keys.isAdmin('legacy-local-demo-key-123'), isTrue);
+      },
+    );
+
     test('parses multiple collector keys from LOCAL_SYNC_COLLECTOR_KEYS', () {
       final keys = AccessKeys.fromEnvironment({
         'LOCAL_SYNC_COLLECTOR_KEYS':
@@ -475,6 +589,245 @@ void main() {
       final keys = AccessKeys.fromEnvironment({'LOCAL_SYNC_KEY': 'short-key'});
 
       expect(keys, isNull);
+    });
+  });
+
+  group('Public mode HTTP protections', () {
+    const collectorKey = 'a-very-long-independent-collector-secret-000001';
+    const adminKey = 'a-very-long-independent-admin-secret-00000001';
+    const allowedOrigin = 'https://admin.example.org';
+
+    late HttpServer server;
+    late HttpClient client;
+    late AccessKeys keys;
+
+    setUp(() async {
+      keys = AccessKeys.fromEnvironment({
+        'LOCAL_SYNC_PUBLIC_MODE': 'true',
+        'LOCAL_SYNC_COLLECTOR_KEYS': 'C001:$collectorKey',
+        'LOCAL_SYNC_ADMIN_KEY': adminKey,
+        'LOCAL_SYNC_ALLOWED_ORIGINS': allowedOrigin,
+      })!;
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((request) => handleRequest(request, store, keys));
+      client = HttpClient();
+      resetAuthLimiterForTesting();
+    });
+
+    tearDown(() async {
+      client.close(force: true);
+      await server.close(force: true);
+    });
+
+    test('only exact admin origin receives CORS permission', () async {
+      final allowed = await client.openUrl(
+        'OPTIONS',
+        Uri.parse('http://127.0.0.1:${server.port}/records'),
+      );
+      allowed.headers
+        ..set('origin', allowedOrigin)
+        ..set('x-forwarded-proto', 'https')
+        ..set(HttpHeaders.accessControlRequestMethodHeader, 'GET')
+        ..set(
+          HttpHeaders.accessControlRequestHeadersHeader,
+          'x-local-sync-key',
+        );
+      final allowedResponse = await allowed.close();
+      expect(allowedResponse.statusCode, HttpStatus.noContent);
+      expect(
+        allowedResponse.headers.value(
+          HttpHeaders.accessControlAllowOriginHeader,
+        ),
+        allowedOrigin,
+      );
+      await allowedResponse.drain<void>();
+
+      final denied = await client.getUrl(
+        Uri.parse('http://127.0.0.1:${server.port}/records'),
+      );
+      denied.headers
+        ..set('origin', 'https://evil.example.org')
+        ..set('x-forwarded-proto', 'https')
+        ..set('x-local-sync-key', adminKey);
+      final deniedResponse = await denied.close();
+      expect(deniedResponse.statusCode, HttpStatus.forbidden);
+      expect(
+        deniedResponse.headers.value(
+          HttpHeaders.accessControlAllowOriginHeader,
+        ),
+        isNull,
+      );
+      await deniedResponse.drain<void>();
+    });
+
+    test('collector bootstrap creates a required current session', () async {
+      final login = await client.postUrl(
+        Uri.parse('http://127.0.0.1:${server.port}/collector/session'),
+      );
+      login.headers
+        ..set('x-forwarded-proto', 'https')
+        ..set('x-local-sync-key', collectorKey)
+        ..contentType = ContentType.json;
+      login.write(jsonEncode({'collectorId': 'C001'}));
+      final loginResponse = await login.close();
+      expect(loginResponse.statusCode, HttpStatus.ok);
+      final payload =
+          jsonDecode(await utf8.decoder.bind(loginResponse).join()) as Map;
+      final token = payload['sessionToken'] as String;
+
+      final withoutSession = await client.getUrl(
+        Uri.parse('http://127.0.0.1:${server.port}/health'),
+      );
+      withoutSession.headers
+        ..set('x-forwarded-proto', 'https')
+        ..set('x-local-sync-key', collectorKey);
+      final rejected = await withoutSession.close();
+      expect(rejected.statusCode, HttpStatus.unauthorized);
+      await rejected.drain<void>();
+
+      final withSession = await client.getUrl(
+        Uri.parse('http://127.0.0.1:${server.port}/health'),
+      );
+      withSession.headers
+        ..set('x-forwarded-proto', 'https')
+        ..set('x-local-sync-key', collectorKey)
+        ..set('x-local-session', token);
+      final accepted = await withSession.close();
+      expect(accepted.statusCode, HttpStatus.ok);
+      await accepted.drain<void>();
+    });
+
+    test(
+      'requires TLS proxy marker and applies bounded auth throttling',
+      () async {
+        final direct = await client.getUrl(
+          Uri.parse('http://127.0.0.1:${server.port}/health'),
+        );
+        direct.headers.set('x-local-sync-key', adminKey);
+        final directResponse = await direct.close();
+        expect(directResponse.statusCode, HttpStatus.forbidden);
+        await directResponse.drain<void>();
+
+        for (var attempt = 1; attempt <= 21; attempt++) {
+          final request = await client.getUrl(
+            Uri.parse('http://127.0.0.1:${server.port}/health'),
+          );
+          request.headers
+            ..set('x-forwarded-proto', 'https')
+            ..set('x-local-sync-key', 'incorrect-public-key');
+          final response = await request.close();
+          expect(
+            response.statusCode,
+            attempt <= 20
+                ? HttpStatus.unauthorized
+                : HttpStatus.tooManyRequests,
+          );
+          await response.drain<void>();
+        }
+      },
+    );
+
+    test('resolveClientKey enforces trusted loopback proxy and validates IPs', () {
+      final loopback = InternetAddress.loopbackIPv4;
+      final externalIp = InternetAddress('198.51.100.5');
+
+      // Forwarded addresses are ignored when connection is NOT from loopback
+      expect(
+        resolveClientKey(
+          remoteAddress: externalIp,
+          forwardedFor: '203.0.113.10',
+          realIp: '203.0.113.20',
+        ),
+        externalIp.address,
+      );
+
+      // Malformed/non-IP values are ignored and fall back safely
+      expect(
+        resolveClientKey(
+          remoteAddress: loopback,
+          forwardedFor: 'spoofed-ip-1, bad*ip',
+        ),
+        loopback.address,
+      );
+
+      // Valid client IP from loopback proxy is accepted
+      expect(
+        resolveClientKey(
+          remoteAddress: loopback,
+          forwardedFor: '203.0.113.10, 10.0.0.1',
+        ),
+        '203.0.113.10',
+      );
+
+      // Forwarded loopback IP is rejected (not an external client IP)
+      expect(
+        resolveClientKey(
+          remoteAddress: loopback,
+          forwardedFor: '127.0.0.1',
+        ),
+        loopback.address,
+      );
+
+      // X-Real-IP is used when X-Forwarded-For is absent or empty
+      expect(
+        resolveClientKey(
+          remoteAddress: loopback,
+          realIp: '203.0.113.20',
+        ),
+        '203.0.113.20',
+      );
+    });
+
+    test('different forwarded client IPs have independent rate-limiting buckets', () async {
+      const clientIp1 = '203.0.113.100';
+      const clientIp2 = '203.0.113.101';
+
+      // clientIp1 exhausts attempts (20 failures -> 401, 21st -> 429)
+      for (var attempt = 1; attempt <= 21; attempt++) {
+        final request = await client.getUrl(
+          Uri.parse('http://127.0.0.1:${server.port}/health'),
+        );
+        request.headers
+          ..set('x-forwarded-proto', 'https')
+          ..set('x-forwarded-for', clientIp1)
+          ..set('x-local-sync-key', 'incorrect-public-key');
+        final response = await request.close();
+        expect(
+          response.statusCode,
+          attempt <= 20 ? HttpStatus.unauthorized : HttpStatus.tooManyRequests,
+        );
+        await response.drain<void>();
+      }
+
+      // clientIp2 is NOT throttled by clientIp1's failures
+      final request2 = await client.getUrl(
+        Uri.parse('http://127.0.0.1:${server.port}/health'),
+      );
+      request2.headers
+        ..set('x-forwarded-proto', 'https')
+        ..set('x-forwarded-for', clientIp2)
+        ..set('x-local-sync-key', 'incorrect-public-key');
+      final response2 = await request2.close();
+      expect(response2.statusCode, HttpStatus.unauthorized);
+      await response2.drain<void>();
+    });
+
+    test('spoofed non-IP forwarded headers do not bypass rate limiting', () async {
+      for (var attempt = 1; attempt <= 21; attempt++) {
+        final request = await client.getUrl(
+          Uri.parse('http://127.0.0.1:${server.port}/health'),
+        );
+        request.headers
+          ..set('x-forwarded-proto', 'https')
+          ..set('x-forwarded-for', 'spoofed-random-$attempt')
+          ..set('x-local-sync-key', 'incorrect-public-key');
+        final response = await request.close();
+        expect(
+          response.statusCode,
+          attempt <= 20 ? HttpStatus.unauthorized : HttpStatus.tooManyRequests,
+        );
+        await response.drain<void>();
+      }
     });
   });
 
@@ -682,32 +1035,45 @@ void main() {
       expect(jsonDecode(adminHealth.body)['recoveredFromBackup'], isFalse);
     });
 
-    test('GET /health exposes degraded recovery after primary corruption', () async {
-      await store.upsertCollector(_submission());
-      await store.upsertCollector(_submission(
-        id: 'visit-2', key: 'upload-visit-2', studyId: 'P002',
-        phone: '+919000000002',
-      ));
-      await store.recordsFile.writeAsString('{invalid json', flush: true);
-      final recovered = LocalRecordStore(dataDirectory);
-      await recovered.load();
-      final healthServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      healthServer.listen((request) => handleRequest(
-        request, recovered,
-        const AccessKeys(collectorKeys: {collectorKeyA}, admin: adminKey),
-      ));
-      try {
-        final response = await http.get(
-          Uri.parse('http://127.0.0.1:${healthServer.port}/health'),
-          headers: {'x-local-sync-key': adminKey},
+    test(
+      'GET /health exposes degraded recovery after primary corruption',
+      () async {
+        await store.upsertCollector(_submission());
+        await store.upsertCollector(
+          _submission(
+            id: 'visit-2',
+            key: 'upload-visit-2',
+            studyId: 'P002',
+            phone: '+919000000002',
+          ),
         );
-        expect(response.statusCode, HttpStatus.ok);
-        expect(jsonDecode(response.body)['status'], 'degraded');
-        expect(jsonDecode(response.body)['recoveredFromBackup'], isTrue);
-      } finally {
-        await healthServer.close(force: true);
-      }
-    });
+        await store.recordsFile.writeAsString('{invalid json', flush: true);
+        final recovered = LocalRecordStore(dataDirectory);
+        await recovered.load();
+        final healthServer = await HttpServer.bind(
+          InternetAddress.loopbackIPv4,
+          0,
+        );
+        healthServer.listen(
+          (request) => handleRequest(
+            request,
+            recovered,
+            const AccessKeys(collectorKeys: {collectorKeyA}, admin: adminKey),
+          ),
+        );
+        try {
+          final response = await http.get(
+            Uri.parse('http://127.0.0.1:${healthServer.port}/health'),
+            headers: {'x-local-sync-key': adminKey},
+          );
+          expect(response.statusCode, HttpStatus.ok);
+          expect(jsonDecode(response.body)['status'], 'degraded');
+          expect(jsonDecode(response.body)['recoveredFromBackup'], isTrue);
+        } finally {
+          await healthServer.close(force: true);
+        }
+      },
+    );
 
     test('rejects DELETE requests with 405 Method Not Allowed', () async {
       final deleteResponse = await http.delete(

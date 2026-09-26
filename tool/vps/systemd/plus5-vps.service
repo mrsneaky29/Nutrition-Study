@@ -1,0 +1,25 @@
+[Unit]
+Description=+5 local sync API
+After=network.target
+
+[Service]
+Type=simple
+User=plus5-vps
+Group=plus5-vps
+WorkingDirectory=/var/lib/plus5-vps/state
+EnvironmentFile=/etc/plus5-vps/local-sync.env
+ExecStart=/usr/bin/dart run /opt/plus5-vps/current/tool/local_sync_server.dart --host=127.0.0.1 --port=8787
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/plus5-vps/state
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

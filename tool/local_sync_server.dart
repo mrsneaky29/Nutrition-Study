@@ -13,18 +13,32 @@ import 'dart:io';
 import 'dart:math';
 
 const _defaultHost = '0.0.0.0';
+const _publicDefaultHost = '127.0.0.1';
 const _defaultPort = 8787;
 const _maxRequestBytes = 1024 * 1024;
+const _publicMinKeyLength = 32;
 
 final _random = Random.secure();
 
 Future<void> main(List<String> arguments) async {
-  final configuration = _ServerConfiguration.parse(arguments);
-  final accessKeys = AccessKeys.fromEnvironment(Platform.environment);
+  late final _ServerConfiguration configuration;
+  late final AccessKeys? accessKeys;
+  try {
+    configuration = _ServerConfiguration.parse(arguments);
+    accessKeys = AccessKeys.fromEnvironment(Platform.environment);
+  } on FormatException catch (error) {
+    stderr.writeln('Invalid local sync configuration: ${error.message}');
+    exitCode = 64;
+    return;
+  } on ArgumentError catch (error) {
+    stderr.writeln('Invalid local sync configuration: ${error.message ?? error}');
+    exitCode = 64;
+    return;
+  }
   if (accessKeys == null) {
     stderr.writeln(
-      'Set distinct LOCAL_SYNC_COLLECTOR_KEY(S) and LOCAL_SYNC_ADMIN_KEY '
-      '(at least 16 characters each), or legacy LOCAL_SYNC_KEY for local demo.',
+      'Set valid collector and admin keys. Public mode requires mapped keys '
+      'of at least 32 characters and exact allowed origins.',
     );
     exitCode = 64;
     return;
@@ -36,6 +50,11 @@ Future<void> main(List<String> arguments) async {
   stdout.writeln(
     'Local sync service listening at http://${configuration.host}:${server.port}',
   );
+  if (accessKeys.publicMode) {
+    stdout.writeln(
+      'Public mode: loopback only; TLS reverse proxy must set X-Forwarded-Proto: https.',
+    );
+  }
   stdout.writeln('Record store: ${store.recordsFile.path}');
   stdout.writeln('Conflict store: ${store.conflictsFile.path}');
 
@@ -50,12 +69,16 @@ class AccessKeys {
     required this.admin,
     this.collectorIdentities = const {},
     this.requireCollectorSession = false,
+    this.publicMode = false,
+    this.allowedOrigins = const {},
   });
 
   final Set<String> collectorKeys;
   final String admin;
   final Map<String, String> collectorIdentities;
   final bool requireCollectorSession;
+  final bool publicMode;
+  final Set<String> allowedOrigins;
 
   String get collector => collectorKeys.first;
 
@@ -77,6 +100,18 @@ class AccessKeys {
   }
 
   static AccessKeys? fromEnvironment(Map<String, String> environment) {
+    final publicModeRaw = environment['LOCAL_SYNC_PUBLIC_MODE'];
+    if (publicModeRaw != null && publicModeRaw.trim().isNotEmpty) {
+      final enabled = publicModeRaw.trim().toLowerCase();
+      if (enabled != 'true' && enabled != 'false') {
+        throw const FormatException(
+          'LOCAL_SYNC_PUBLIC_MODE must be true or false.',
+        );
+      }
+      if (enabled == 'true') {
+        return _publicAccessKeysFromEnvironment(environment);
+      }
+    }
     final collectorKeys = <String>{};
     final collectorIdentities = <String, String>{};
 
@@ -153,6 +188,88 @@ class AccessKeys {
   }
 }
 
+AccessKeys _publicAccessKeysFromEnvironment(Map<String, String> environment) {
+  if ((environment['LOCAL_SYNC_KEY'] ?? '').trim().isNotEmpty ||
+      (environment['LOCAL_SYNC_COLLECTOR_KEY'] ?? '').trim().isNotEmpty) {
+    throw const FormatException(
+      'Legacy LOCAL_SYNC_KEY and LOCAL_SYNC_COLLECTOR_KEY are not supported in public mode; configure mapped collector and independent admin keys.',
+    );
+  }
+  final rawCollectors = (environment['LOCAL_SYNC_COLLECTOR_KEYS'] ?? '').trim();
+  final rawAdmin = (environment['LOCAL_SYNC_ADMIN_KEY'] ?? '').trim();
+  if (rawCollectors.isEmpty || rawAdmin.length < _publicMinKeyLength) {
+    throw const FormatException(
+      'Public mode requires LOCAL_SYNC_COLLECTOR_KEYS and a LOCAL_SYNC_ADMIN_KEY of at least 32 characters.',
+    );
+  }
+
+  final collectorKeys = <String>{};
+  final identities = <String, String>{};
+  for (final entry in rawCollectors.split(',')) {
+    final separator = entry.indexOf(':');
+    if (separator <= 0 || separator == entry.length - 1) {
+      throw const FormatException(
+        'Public collector keys must use C001:<secret>,C002:<secret> syntax.',
+      );
+    }
+    final identity = entry.substring(0, separator).trim();
+    final key = entry.substring(separator + 1).trim();
+    if (!RegExp(r'^C\d{2,}$').hasMatch(identity) ||
+        key.length < _publicMinKeyLength ||
+        !collectorKeys.add(key) ||
+        identities.containsKey(identity)) {
+      throw const FormatException(
+        'Public collector identities must be unique Cnn/Cnnn+ values and each mapped key must be unique and at least 32 characters.',
+      );
+    }
+    identities[identity] = key;
+  }
+  if (collectorKeys.isEmpty ||
+      collectorKeys.contains(rawAdmin) ||
+      identities.length != collectorKeys.length) {
+    throw const FormatException(
+      'Public mode requires distinct collector keys and an independent admin key.',
+    );
+  }
+
+  final originValues = (environment['LOCAL_SYNC_ALLOWED_ORIGINS'] ?? '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .where((origin) => origin.isNotEmpty)
+      .toSet();
+  if (originValues.isEmpty ||
+      originValues.any((origin) => !_isExactWebOrigin(origin))) {
+    throw const FormatException(
+      'Public mode requires LOCAL_SYNC_ALLOWED_ORIGINS as a comma-separated list of exact https origins without paths or wildcards.',
+    );
+  }
+
+  return AccessKeys(
+    collectorKeys: collectorKeys,
+    admin: rawAdmin,
+    collectorIdentities: {
+      for (final entry in identities.entries) entry.value: entry.key,
+    },
+    requireCollectorSession: true,
+    publicMode: true,
+    allowedOrigins: originValues,
+  );
+}
+
+bool _isExactWebOrigin(String value) {
+  if (value == '*' || value.contains('*')) return false;
+  final uri = Uri.tryParse(value);
+  return uri != null &&
+      uri.scheme == 'https' &&
+      uri.hasAuthority &&
+      uri.host.isNotEmpty &&
+      uri.userInfo.isEmpty &&
+      uri.path.isEmpty &&
+      !uri.hasQuery &&
+      !uri.hasFragment &&
+      value == uri.origin;
+}
+
 class _ServerConfiguration {
   const _ServerConfiguration({required this.host, required this.port});
 
@@ -160,7 +277,14 @@ class _ServerConfiguration {
   final int port;
 
   static _ServerConfiguration parse(List<String> arguments) {
-    var host = Platform.environment['LOCAL_SYNC_HOST'] ?? _defaultHost;
+    final publicMode =
+        (Platform.environment['LOCAL_SYNC_PUBLIC_MODE'] ?? '')
+            .trim()
+            .toLowerCase() ==
+        'true';
+    final configuredHost = Platform.environment['LOCAL_SYNC_HOST'];
+    var host =
+        configuredHost ?? (publicMode ? _publicDefaultHost : _defaultHost);
     var port =
         int.tryParse(Platform.environment['LOCAL_SYNC_PORT'] ?? '') ??
         _defaultPort;
@@ -183,6 +307,11 @@ class _ServerConfiguration {
     if (host.isEmpty) {
       throw ArgumentError('host cannot be empty.');
     }
+    if (publicMode && !_isLoopbackHost(host)) {
+      throw const FormatException(
+        'Public mode must bind to loopback (127.0.0.1 or ::1) behind a TLS reverse proxy.',
+      );
+    }
     if (port < 1 || port > 65535) {
       throw ArgumentError('port must be between 1 and 65535.');
     }
@@ -190,14 +319,44 @@ class _ServerConfiguration {
   }
 }
 
+bool _isLoopbackHost(String host) {
+  if (host.toLowerCase() == 'localhost') return true;
+  final address = InternetAddress.tryParse(host);
+  return address?.isLoopback ?? false;
+}
+
 Future<void> handleRequest(
   HttpRequest request,
   LocalRecordStore store,
   AccessKeys accessKeys,
 ) async {
-  _addCorsHeaders(request.response);
+  final origin = request.headers.value('origin');
+  if (accessKeys.publicMode &&
+      request.headers.value('x-forwarded-proto')?.toLowerCase() != 'https') {
+    await _writeJson(request.response, HttpStatus.forbidden, {
+      'error': 'HTTPS reverse proxy required.',
+    });
+    return;
+  }
+  if (accessKeys.publicMode &&
+      origin != null &&
+      !accessKeys.allowedOrigins.contains(origin)) {
+    await _writeJson(request.response, HttpStatus.forbidden, {
+      'error': 'Origin is not allowed.',
+    });
+    return;
+  }
+  _addCorsHeaders(
+    request.response,
+    publicMode: accessKeys.publicMode,
+    origin: origin,
+    allowedOrigins: accessKeys.allowedOrigins,
+  );
   try {
     if (request.method == 'OPTIONS') {
+      if (accessKeys.publicMode && origin == null) {
+        throw const ApiException(HttpStatus.forbidden, 'Origin is required.');
+      }
       request.response.statusCode = HttpStatus.noContent;
       await request.response.close();
       return;
@@ -214,17 +373,32 @@ Future<void> handleRequest(
     final isCollector = accessKeys.isCollector(suppliedKey);
     final isAdmin = accessKeys.isAdmin(suppliedKey);
     if (!isCollector && !isAdmin) {
+      if (accessKeys.publicMode &&
+          !_publicAuthLimiter.allow(_requestClientKey(request))) {
+        throw const ApiException(
+          HttpStatus.tooManyRequests,
+          'Too many authentication failures. Try again later.',
+        );
+      }
       throw const ApiException(
         HttpStatus.unauthorized,
         'Invalid local access key.',
       );
     }
+    if (accessKeys.publicMode) {
+      _publicAuthLimiter.clear(_requestClientKey(request));
+    }
 
     final segments = request.uri.pathSegments;
-    if (request.method == 'POST' &&
-        segments.length == 2 &&
-        segments[0] == 'collector' &&
-        segments[1] == 'session') {
+    final isSessionRoute = request.method == 'POST' &&
+        ((segments.length == 2 &&
+            segments[0] == 'collector' &&
+            segments[1] == 'session') ||
+         (segments.length == 3 &&
+            segments[0] == 'sync' &&
+            segments[1] == 'session' &&
+            segments[2] == 'bootstrap'));
+    if (isSessionRoute) {
       if (!isCollector) {
         throw const ApiException(
           HttpStatus.forbidden,
@@ -233,7 +407,8 @@ Future<void> handleRequest(
       }
       final identity = accessKeys.collectorIdForKey(suppliedKey)!;
       final payload = await _readJsonObject(request);
-      if (payload['collectorId'] != identity) {
+      final declaredCollectorId = payload['collectorId'];
+      if (declaredCollectorId != null && declaredCollectorId != identity) {
         throw const ApiException(
           HttpStatus.forbidden,
           'Collector number does not match the access key.',
@@ -257,9 +432,12 @@ Future<void> handleRequest(
         );
       }
     }
-    if (request.method == 'GET' &&
-        segments.length == 1 &&
-        segments.single == 'health') {
+    final isHealthRoute = request.method == 'GET' &&
+        ((segments.length == 1 && segments.single == 'health') ||
+         (segments.length == 2 &&
+          segments[0] == 'sync' &&
+          segments[1] == 'health'));
+    if (isHealthRoute) {
       await _writeJson(request.response, HttpStatus.ok, {
         'status': store.recoveredFromBackup ? 'degraded' : 'ok',
         'records': store.length,
@@ -288,16 +466,17 @@ Future<void> handleRequest(
       await _writeJson(request.response, HttpStatus.ok, result);
       return;
     }
-    if (request.method == 'GET' &&
-        segments.length == 1 &&
-        segments.single == 'records') {
+    final isRecordsRoute =
+        (segments.length == 1 && segments.single == 'records') ||
+        (segments.length == 2 &&
+         segments[0] == 'sync' &&
+         segments[1] == 'records');
+    if (request.method == 'GET' && isRecordsRoute) {
       _requireAdminAccess(isAdmin);
       await _writeJson(request.response, HttpStatus.ok, store.records());
       return;
     }
-    if (request.method == 'POST' &&
-        segments.length == 1 &&
-        segments.single == 'records') {
+    if (request.method == 'POST' && isRecordsRoute) {
       if (!isCollector) {
         throw const ApiException(
           HttpStatus.forbidden,
@@ -417,9 +596,14 @@ void _requireAdminAccess(bool isAdmin) {
   }
 }
 
-void _addCorsHeaders(HttpResponse response) {
+void _addCorsHeaders(
+  HttpResponse response, {
+  required bool publicMode,
+  required String? origin,
+  required Set<String> allowedOrigins,
+}) {
   response.headers
-    ..set(HttpHeaders.accessControlAllowOriginHeader, '*')
+    ..set(HttpHeaders.varyHeader, 'Origin')
     ..set(
       HttpHeaders.accessControlAllowMethodsHeader,
       'GET, POST, PUT, OPTIONS',
@@ -429,6 +613,85 @@ void _addCorsHeaders(HttpResponse response) {
       'Content-Type, X-Local-Sync-Key, X-Local-Session',
     )
     ..set(HttpHeaders.accessControlMaxAgeHeader, '600');
+  if (!publicMode) {
+    response.headers.set(HttpHeaders.accessControlAllowOriginHeader, '*');
+  } else if (origin != null && allowedOrigins.contains(origin)) {
+    response.headers.set(HttpHeaders.accessControlAllowOriginHeader, origin);
+  }
+}
+
+String resolveClientKey({
+  required InternetAddress? remoteAddress,
+  String? forwardedFor,
+  String? realIp,
+}) {
+  final fallback = remoteAddress?.address ?? 'unknown';
+  if (remoteAddress?.isLoopback != true) {
+    return fallback;
+  }
+
+  InternetAddress? validateIp(String? raw) {
+    if (raw == null) return null;
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    return InternetAddress.tryParse(trimmed);
+  }
+
+  if (forwardedFor != null && forwardedFor.trim().isNotEmpty) {
+    final first = forwardedFor.split(',').first.trim();
+    final parsed = validateIp(first);
+    if (parsed != null && !parsed.isLoopback) {
+      return parsed.address;
+    }
+  }
+
+  if (realIp != null && realIp.trim().isNotEmpty) {
+    final parsed = validateIp(realIp);
+    if (parsed != null && !parsed.isLoopback) {
+      return parsed.address;
+    }
+  }
+
+  return fallback;
+}
+
+String _requestClientKey(HttpRequest request) => resolveClientKey(
+  remoteAddress: request.connectionInfo?.remoteAddress,
+  forwardedFor: request.headers.value('x-forwarded-for'),
+  realIp: request.headers.value('x-real-ip'),
+);
+
+final _publicAuthLimiter = _PublicAuthLimiter();
+
+class _PublicAuthLimiter {
+  final Map<String, _AuthFailureWindow> _windows = {};
+  static const _window = Duration(minutes: 1);
+  static const _maxFailures = 20;
+  static const _maxClients = 1024;
+
+  bool allow(String client) {
+    final now = DateTime.now();
+    var window = _windows[client];
+    if (window == null || now.difference(window.startedAt) >= _window) {
+      if (_windows.length >= _maxClients) {
+        _windows.remove(_windows.keys.first);
+      }
+      _windows[client] = window = _AuthFailureWindow(now);
+    }
+    window.failures++;
+    return window.failures <= _maxFailures;
+  }
+
+  void clear(String client) => _windows.remove(client);
+  void reset() => _windows.clear();
+}
+
+void resetAuthLimiterForTesting() => _publicAuthLimiter.reset();
+
+class _AuthFailureWindow {
+  _AuthFailureWindow(this.startedAt);
+  final DateTime startedAt;
+  int failures = 0;
 }
 
 Future<Map<String, dynamic>> _readJsonObject(HttpRequest request) async {
