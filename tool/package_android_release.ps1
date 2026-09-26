@@ -6,6 +6,8 @@ param(
   [string]$CollectorApiKey = "",
   [string]$CollectorId = "",
   [int]$CollectorNumber = 0,
+  [switch]$PublicRelease,
+  [switch]$NoPub,
   [switch]$SigningBackupConfirmed
 )
 
@@ -45,6 +47,9 @@ if ($hasUrl) {
       -not [string]::IsNullOrEmpty($apiUri.Fragment)) {
     throw "LocalApiBaseUrl must be an absolute HTTP(S) URL without credentials, query, or fragment."
   }
+  if ($PublicRelease -and ($apiUri.Scheme -ne 'https' -or $apiUri.AbsolutePath -ne '/')) {
+    throw "Public releases require an HTTPS API origin without a path."
+  }
 }
 
 $distributionDirectory = Join-Path $distributionRoot 'shared'
@@ -67,6 +72,10 @@ if (Test-Path -LiteralPath $distributionDirectory) {
 }
 
 $localDefines = @('--dart-define=LOCAL_GENERIC_RELEASE=true')
+if ($NoPub) { $localDefines += '--no-pub' }
+if ($PublicRelease) {
+  $localDefines += '--dart-define=LOCAL_PUBLIC_RELEASE=true'
+}
 if ($hasUrl) {
   $localDefines += "--dart-define=LOCAL_API_BASE_URL=$LocalApiBaseUrl"
 }

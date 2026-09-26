@@ -3,11 +3,13 @@ import 'package:flutter/services.dart';
 
 import 'app_strings.dart';
 import 'presentation_widgets.dart';
+import '../local_sync/http_local_record_sync_client.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({
     this.onSignIn,
     this.showLocalSetup = false,
+    this.requireHttps = false,
     this.initialCollectorNumber = '',
     this.initialServerUrl = '',
     this.initialAccessKey = '',
@@ -16,6 +18,7 @@ class SignInScreen extends StatefulWidget {
 
   final ValueChanged<CollectorAccessInput>? onSignIn;
   final bool showLocalSetup;
+  final bool requireHttps;
   final String initialCollectorNumber;
   final String initialServerUrl;
   final String initialAccessKey;
@@ -126,16 +129,19 @@ class _SignInScreenState extends State<SignInScreen> {
                       TextFormField(
                         controller: _serverUrl,
                         keyboardType: TextInputType.url,
-                        decoration: const InputDecoration(
-                          labelText: 'Home server address',
-                          hintText: 'http://192.168.1.5:8787',
+                        decoration: InputDecoration(
+                          labelText: widget.requireHttps
+                              ? 'Server address'
+                              : 'Home server address',
+                          hintText: widget.requireHttps
+                              ? 'https://server.example.com'
+                              : 'http://192.168.1.5:8787',
                         ),
                         validator: (value) {
-                          final uri = Uri.tryParse(value?.trim() ?? '');
-                          return uri == null ||
-                                  !uri.hasScheme ||
-                                  !['http', 'https'].contains(uri.scheme) ||
-                                  uri.host.isEmpty
+                          return !HttpLocalRecordSyncClient.isValidApiBaseUrl(
+                                value ?? '',
+                                requireHttps: widget.requireHttps,
+                              )
                               ? 'Enter the server address provided by the administrator.'
                               : null;
                         },

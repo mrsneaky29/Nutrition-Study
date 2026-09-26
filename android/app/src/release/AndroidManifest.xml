@@ -1,5 +1,4 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- The home-PC sync endpoint currently uses HTTP on a trusted LAN.
-         Remove this release override when the endpoint moves to HTTPS. -->
-    <application android:usesCleartextTraffic="true" />
+    <!-- Public collector releases require HTTPS. Debug builds may still use
+         cleartext HTTP for local LAN development via the debug manifest. -->
 </manifest>

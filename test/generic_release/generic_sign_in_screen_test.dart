@@ -3,6 +3,50 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:project2/presentation/sign_in_screen.dart';
 
 void main() {
+  testWidgets('public setup accepts only clean HTTPS server URLs', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(430, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    CollectorAccessInput? submitted;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SignInScreen(
+            showLocalSetup: true,
+            requireHttps: true,
+            onSignIn: (value) => submitted = value,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Server address'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextFormField).at(0), '7');
+    await tester.enterText(
+      find.byType(TextFormField).at(1),
+      'http://collector.example.org',
+    );
+    await tester.enterText(
+      find.byType(TextFormField).at(2),
+      'synthetic-collector-key',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
+    await tester.pump();
+    expect(submitted, isNull);
+
+    await tester.enterText(
+      find.byType(TextFormField).at(1),
+      'https://collector.example.org/api',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
+    await tester.pump();
+    expect(submitted?.serverUrl, 'https://collector.example.org/api');
+  });
+
   testWidgets(
     'shared APK accepts collector number and runtime server details',
     (tester) async {

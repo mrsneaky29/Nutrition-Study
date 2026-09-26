@@ -1,6 +1,10 @@
 param(
   [string]$FlutterCommand = "flutter",
   [string]$LocalApiBaseUrl = "",
+  [string]$AdminApiBaseUrl = "",
+  [switch]$AdminOnly,
+  [switch]$PublicRelease,
+  [switch]$NoPub,
   [string]$CollectorApiKey = "",
   [string]$CollectorId = "",
   [int]$CollectorNumber = 0
@@ -11,7 +15,7 @@ $projectDirectory = Split-Path -Parent $PSScriptRoot
 
 $hasUrl = -not [string]::IsNullOrWhiteSpace($LocalApiBaseUrl)
 $hasCollectorKey = -not [string]::IsNullOrWhiteSpace($CollectorApiKey)
-if ($hasUrl -ne $hasCollectorKey) {
+if (-not $AdminOnly -and $hasUrl -ne $hasCollectorKey) {
   throw "LocalApiBaseUrl and CollectorApiKey must be supplied together."
 }
 if ($hasCollectorKey -and $CollectorApiKey.Length -lt 16) {
@@ -30,13 +34,34 @@ if (-not [string]::IsNullOrWhiteSpace($CollectorId)) {
 
 $collectorDefines = @()
 $adminDefines = @()
+$dependencyArgs = @()
+if ($NoPub) { $dependencyArgs += '--no-pub' }
+if ([string]::IsNullOrWhiteSpace($AdminApiBaseUrl)) {
+  $AdminApiBaseUrl = $LocalApiBaseUrl
+}
+if ($PublicRelease -and [string]::IsNullOrWhiteSpace($AdminApiBaseUrl)) {
+  throw "PublicRelease requires an explicit AdminApiBaseUrl."
+}
+if (-not [string]::IsNullOrWhiteSpace($AdminApiBaseUrl)) {
+  $adminUri = $null
+  if (-not [Uri]::TryCreate($AdminApiBaseUrl, [UriKind]::Absolute, [ref]$adminUri) -or
+      $adminUri.Scheme -notin @('http', 'https') -or
+      -not [string]::IsNullOrEmpty($adminUri.UserInfo) -or
+      -not [string]::IsNullOrEmpty($adminUri.Query) -or
+      -not [string]::IsNullOrEmpty($adminUri.Fragment) -or
+      $adminUri.AbsolutePath -ne '/' -or
+      ($PublicRelease -and $adminUri.Scheme -ne 'https')) {
+    throw "AdminApiBaseUrl must be an HTTP(S) origin without credentials, path, query, or fragment; public releases require HTTPS."
+  }
+  $adminDefines += "--dart-define=LOCAL_API_BASE_URL=$AdminApiBaseUrl"
+}
+if ($PublicRelease -and -not $AdminOnly) {
+  throw "Use -AdminOnly for public deployment; collector credentials must not be embedded in a public website."
+}
 if ($hasUrl) {
   $collectorDefines += @(
     "--dart-define=LOCAL_API_BASE_URL=$LocalApiBaseUrl",
     "--dart-define=LOCAL_API_KEY=$CollectorApiKey"
-  )
-  $adminDefines += @(
-    "--dart-define=LOCAL_API_BASE_URL=$LocalApiBaseUrl"
   )
 }
 if (-not [string]::IsNullOrWhiteSpace($CollectorId)) {
@@ -81,18 +106,20 @@ function Update-AdminWebMetadata {
 Push-Location $projectDirectory
 
 try {
-  & $FlutterCommand build web --release --target lib/main.dart --output build/collector_web @collectorDefines
-  if ($LASTEXITCODE -ne 0) {
-    throw "Collector website build failed."
+  if (-not $AdminOnly) {
+    & $FlutterCommand build web --release --target lib/main.dart --output build/collector_web @collectorDefines @dependencyArgs
+    if ($LASTEXITCODE -ne 0) {
+      throw "Collector website build failed."
+    }
   }
 
-  & $FlutterCommand build web --release --target lib/admin_main.dart --output build/admin_web @adminDefines
+  & $FlutterCommand build web --release --target lib/admin_main.dart --output build/admin_web @adminDefines @dependencyArgs
   if ($LASTEXITCODE -ne 0) {
     throw "Admin website build failed."
   }
   Update-AdminWebMetadata
 
-  Write-Host "Collector website: build/collector_web"
+  if (-not $AdminOnly) { Write-Host "Collector website: build/collector_web" }
   Write-Host "Admin website:     build/admin_web"
 } finally {
   Pop-Location

@@ -299,6 +299,7 @@ Map<String, Object?>? _objectMap(Object? value) {
 class _LocalDemoAppState extends State<LocalDemoApp>
     with WidgetsBindingObserver {
   static const _genericRelease = bool.fromEnvironment('LOCAL_GENERIC_RELEASE');
+  static const _publicRelease = bool.fromEnvironment('LOCAL_PUBLIC_RELEASE');
   static const _envCollectorId = String.fromEnvironment('LOCAL_COLLECTOR_ID');
   static const _envCollectorNumber = String.fromEnvironment(
     'LOCAL_COLLECTOR_NUMBER',
@@ -357,7 +358,9 @@ class _LocalDemoAppState extends State<LocalDemoApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _syncGateway = widget.syncGateway ?? HttpLocalRecordSyncClient();
+    _syncGateway =
+        widget.syncGateway ??
+        HttpLocalRecordSyncClient(requireHttps: _publicRelease);
     _recordStore = widget.recordStore ?? SecureLocalRecordStore();
     _visitDraftStore =
         widget.visitDraftStore ??
@@ -457,6 +460,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
           client: widget.localHttpClient,
           apiBaseUrl: credentials.serverUrl,
           apiKey: credentials.accessKey,
+          requireHttps: _publicRelease,
         );
         final token = await client.startSession(formattedCode);
         final storage = widget.secureStorage ?? const FlutterSecureStorage();
@@ -621,6 +625,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
             key: ValueKey('sign-in-$_collectorCode-$_savedServerUrl'),
             onSignIn: _signIn,
             showLocalSetup: _genericRelease && widget.cloudController == null,
+            requireHttps: _publicRelease,
             initialCollectorNumber: _genericRelease
                 ? (int.tryParse(_collectorCode.replaceAll(RegExp(r'\D'), '')) ??
                           1)
@@ -736,6 +741,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
             apiBaseUrl: _savedServerUrl,
             apiKey: _savedApiKey,
             sessionToken: token,
+            requireHttps: _publicRelease,
           );
           _collectorCode = code;
           _isSignedIn = true;

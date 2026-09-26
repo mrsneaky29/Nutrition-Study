@@ -15,11 +15,12 @@ class CollectorSessionExpiredException implements Exception {
   String toString() => 'Collector session expired. Sign in again.';
 }
 
-/// HTTP implementation for the optional collector-to-PC LAN connection.
+/// HTTP implementation for the optional collector-to-server connection.
 ///
-/// Configure it only for a physical LAN build, for example with
-/// `--dart-define=LOCAL_API_BASE_URL=http://192.168.1.20:8787`. Without that
-/// value, records intentionally remain local and pending for synchronization.
+/// Configure it for a local LAN build with
+/// `--dart-define=LOCAL_API_BASE_URL=http://192.168.1.20:8787`, or provide a
+/// trusted HTTPS base URL in a public collector release. Without a base URL,
+/// records intentionally remain local and pending for synchronization.
 class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
   HttpLocalRecordSyncClient({
     http.Client? client,
@@ -27,6 +28,7 @@ class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
     String? apiKey,
     this.sessionToken,
     this.timeout = const Duration(seconds: 5),
+    this.requireHttps = false,
   }) : _client = client ?? http.Client(),
        _apiBaseUrl = apiBaseUrl ?? configuredApiBaseUrl,
        _apiKey = apiKey ?? configuredApiKey;
@@ -40,29 +42,58 @@ class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
   final http.Client _client;
   final String _apiBaseUrl;
   final String _apiKey;
+
+  /// Requires a clean HTTPS origin, as used by public collector releases.
+  /// Kept opt-in so local LAN builds retain their HTTP behavior.
+  final bool requireHttps;
   String? sessionToken;
   final Duration timeout;
 
+  /// Whether [value] is an absolute server base URL safe for this client.
+  /// Query strings, fragments, and user information are never part of a base
+  /// endpoint. Public releases can additionally require HTTPS.
+  static bool isValidApiBaseUrl(String value, {bool requireHttps = false}) {
+    final input = value.trim();
+    if (input.isEmpty || input.contains(RegExp(r'\s'))) return false;
+    final uri = Uri.tryParse(input);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) return false;
+    if (uri.scheme != 'http' && uri.scheme != 'https') return false;
+    if (requireHttps && uri.scheme != 'https') return false;
+    if (uri.userInfo.isNotEmpty || uri.hasQuery || uri.hasFragment) {
+      return false;
+    }
+    return true;
+  }
+
+  Uri? _endpoint(String suffix) {
+    final base = _apiBaseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+    if (!isValidApiBaseUrl(base, requireHttps: requireHttps)) return null;
+    return Uri.tryParse('$base/$suffix');
+  }
+
   /// A new successful login supersedes the previous phone for this collector.
   Future<String> startSession(String collectorId) async {
-    final base = _apiBaseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-    final endpoint = Uri.tryParse('$base/collector/session');
-    if (endpoint == null || !endpoint.hasScheme || endpoint.host.isEmpty) {
+    final endpoint = _endpoint('collector/session');
+    if (endpoint == null) {
       throw const FormatException('Enter a valid server address.');
     }
-    final response = await _client.post(
-      endpoint,
-      headers: {
-        'content-type': 'application/json',
-        'x-local-sync-key': _apiKey,
-      },
-      body: jsonEncode({'collectorId': collectorId}),
-    ).timeout(timeout);
+    final response = await _client
+        .post(
+          endpoint,
+          headers: {
+            'content-type': 'application/json',
+            'x-local-sync-key': _apiKey,
+          },
+          body: jsonEncode({'collectorId': collectorId}),
+        )
+        .timeout(timeout);
     final body = _tryParseJsonMap(response.body);
-    if (response.statusCode != 200 || body?['sessionToken'] is! String ||
+    if (response.statusCode != 200 ||
+        body?['sessionToken'] is! String ||
         body?['collectorId'] != collectorId) {
       throw StateError(
-        body?['error']?.toString() ?? 'Collector login failed (${response.statusCode}).',
+        body?['error']?.toString() ??
+            'Collector login failed (${response.statusCode}).',
       );
     }
     sessionToken = body!['sessionToken'] as String;
@@ -109,7 +140,8 @@ class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
             endpoint,
             headers: {
               'x-local-sync-key': _apiKey,
-              if (sessionToken case final String token) 'x-local-session': token,
+              if (sessionToken case final String token)
+                'x-local-session': token,
             },
           )
           .timeout(timeout);
@@ -130,28 +162,41 @@ class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
             final ids = <String>{};
             for (final item in raw) {
               if (item is! Map) return const ParticipantLookupResult.offline();
-              final id = normalizeParticipantStudyId(item['studyId'] as String?);
+              final id = normalizeParticipantStudyId(
+                item['studyId'] as String?,
+              );
               final name = item['name'];
               final nextVisit = item['nextVisitNumber'];
-              if (id == null || name is! String || name.trim().isEmpty ||
-                  nextVisit is! int || nextVisit < 2 || !ids.add(id)) {
+              if (id == null ||
+                  name is! String ||
+                  name.trim().isEmpty ||
+                  nextVisit is! int ||
+                  nextVisit < 2 ||
+                  !ids.add(id)) {
                 return const ParticipantLookupResult.offline();
               }
-              candidates.add(ParticipantLookupCandidate(
-                studyId: id,
-                name: name.trim(),
-                nextVisitNumber: nextVisit,
-              ));
+              candidates.add(
+                ParticipantLookupCandidate(
+                  studyId: id,
+                  name: name.trim(),
+                  nextVisitNumber: nextVisit,
+                ),
+              );
             }
             return ParticipantLookupResult.ambiguous(candidates);
           }
           final participant = body['participant'];
           if (participant is Map) {
             final nextVisit = participant['nextVisitNumber'];
-            final id = normalizeParticipantStudyId(participant['studyId'] as String?);
+            final id = normalizeParticipantStudyId(
+              participant['studyId'] as String?,
+            );
             final name = participant['name'];
-            if (id == null || name is! String || name.trim().isEmpty ||
-                nextVisit is! int || nextVisit < 2) {
+            if (id == null ||
+                name is! String ||
+                name.trim().isEmpty ||
+                nextVisit is! int ||
+                nextVisit < 2) {
               return const ParticipantLookupResult.offline();
             }
             return ParticipantLookupResult.found(
@@ -206,7 +251,8 @@ class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
             headers: {
               'content-type': 'application/json',
               'x-local-sync-key': _apiKey,
-              if (sessionToken case final String token) 'x-local-session': token,
+              if (sessionToken case final String token)
+                'x-local-session': token,
             },
             body: jsonEncode(record),
           )
@@ -247,14 +293,13 @@ class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
       _lastResponse = syncResponse;
       return syncResponse;
     } on TimeoutException catch (e) {
-      final detail = (e.message != null &&
+      final detail =
+          (e.message != null &&
               e.message!.isNotEmpty &&
               e.message != 'Future not completed')
           ? e.message!
           : 'Network request timed out after ${timeout.inSeconds}s';
-      final syncResponse = SyncResponse.pending(
-        message: detail,
-      );
+      final syncResponse = SyncResponse.pending(message: detail);
       _lastResponse = syncResponse;
       return syncResponse;
     } on SocketException catch (e) {
@@ -278,9 +323,7 @@ class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
     } catch (e) {
       // Network availability must never prevent a collector from retaining a
       // completed visit locally. The next home/manual retry can try again.
-      final syncResponse = SyncResponse.pending(
-        message: e.toString(),
-      );
+      final syncResponse = SyncResponse.pending(message: e.toString());
       _lastResponse = syncResponse;
       return syncResponse;
     }
@@ -291,21 +334,12 @@ class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
       sendRecordDetailed(record);
 
   Uri? get _recordsEndpoint {
-    final base = _apiBaseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-    if (base.isEmpty) return null;
-    final uri = Uri.tryParse(base);
-    if (uri == null || !uri.hasScheme || uri.host.isEmpty) return null;
-    return Uri.tryParse('$base/records');
+    return _endpoint('records');
   }
 
   Uri? _participantLookupUri(String phone) {
-    final base = _apiBaseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-    if (base.isEmpty) return null;
-    final uri = Uri.tryParse(base);
-    if (uri == null || !uri.hasScheme || uri.host.isEmpty) return null;
-    return Uri.tryParse(
-      '$base/participants/lookup?phone=${Uri.encodeQueryComponent(phone)}',
-    );
+    final endpoint = _endpoint('participants/lookup');
+    return endpoint?.replace(queryParameters: {'phone': phone});
   }
 
   static Map<String, Object?>? _tryParseJsonMap(String raw) {
@@ -324,22 +358,17 @@ class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
     String? conflictType,
     String? conflictId,
     Map<String, Object?>? body,
-  }) _parseConflictBody(String raw) {
+  })
+  _parseConflictBody(String raw) {
     if (raw.trim().isEmpty) {
-      return (
-        message: null,
-        conflictType: null,
-        conflictId: null,
-        body: null,
-      );
+      return (message: null, conflictType: null, conflictId: null, body: null);
     }
     try {
       final decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) {
         final map = decoded.cast<String, Object?>();
         final conflictType = map['conflictType'] as String?;
-        final conflictId =
-            (map['conflictId'] ?? map['conflict_id']) as String?;
+        final conflictId = (map['conflictId'] ?? map['conflict_id']) as String?;
         String? message;
         if (map['message'] is String && (map['message'] as String).isNotEmpty) {
           message = map['message'] as String;
@@ -373,12 +402,7 @@ class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
         body: null,
       );
     }
-    return (
-      message: null,
-      conflictType: null,
-      conflictId: null,
-      body: null,
-    );
+    return (message: null, conflictType: null, conflictId: null, body: null);
   }
 }
 

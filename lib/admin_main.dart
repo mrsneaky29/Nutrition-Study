@@ -78,7 +78,7 @@ class _AdminEntryAppState extends State<_AdminEntryApp> {
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 12),
-                  const Text('Enter the key for the home-PC study server.'),
+                  const Text('Enter the administrator key for the study server.'),
                   const SizedBox(height: 24),
                   TextField(
                     controller: _keyController,
