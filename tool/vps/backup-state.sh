@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT=${VPS_ROOT:-/opt/plus5-vps}
 STATE_DIR=${VPS_STATE_DIR:-/var/lib/plus5-vps/state}
 SERVICE_NAME=${VPS_SERVICE_NAME:-plus5-vps}
+ACCOUNT=${VPS_ACCOUNT:-plus5-vps}
 
 force_same_fs=0
 dest=""
@@ -42,6 +43,17 @@ if [[ -z "$dest" ]]; then
   exit 2
 fi
 
+# Reject paths containing directory traversal ('..')
+if [[ "$dest" =~ \.\. ]]; then
+  echo "Error: Directory traversal ('..') detected in destination path: $dest" >&2
+  exit 1
+fi
+
+if [[ "$STATE_DIR" =~ \.\. ]]; then
+  echo "Error: Directory traversal ('..') detected in state directory path: $STATE_DIR" >&2
+  exit 1
+fi
+
 if [[ ! -d "$dest" ]]; then
   echo "Error: Destination directory does not exist or is not a directory: $dest" >&2
   exit 1
@@ -60,9 +72,11 @@ fi
 canonical_path() {
   local target="$1"
   if command -v realpath >/dev/null 2>&1; then
-    realpath "$target"
+    realpath -m "$target"
+  elif command -v readlink >/dev/null 2>&1; then
+    readlink -m "$target" 2>/dev/null || (cd "$target" 2>/dev/null && pwd -P) || echo "$target"
   else
-    readlink -f "$target" 2>/dev/null || (cd "$target" 2>/dev/null && pwd -P) || echo "$target"
+    (cd "$target" 2>/dev/null && pwd -P) || echo "$target"
   fi
 }
 
@@ -75,8 +89,39 @@ else
   base_real="$base_plus5"
 fi
 
+is_unsafe_destination() {
+  local p="$1"
+  p="${p%/}"
+  [[ -z "$p" ]] && return 0
+
+  case "$p" in
+    "" | "/" | "/bin" | "/boot" | "/dev" | "/etc" | "/home" | "/lib" | "/lib32" | "/lib64" | "/libx32" | \
+    "/media" | "/mnt" | "/opt" | "/proc" | "/root" | "/run" | "/sbin" | "/srv" | "/sys" | \
+    "/usr" | "/usr/bin" | "/usr/include" | "/usr/lib" | "/usr/local" | "/usr/sbin" | "/usr/share" | "/usr/src" | \
+    "/var" | "/var/backups" | "/var/cache" | "/var/lib" | "/var/local" | "/var/lock" | "/var/log" | "/var/mail" | "/var/opt" | "/var/run" | "/var/spool" | "/var/tmp" )
+      return 0
+      ;;
+  esac
+
+  if [[ "$p" =~ ^/[a-zA-Z]$ || "$p" =~ ^[a-zA-Z]:/?$ ]]; then
+    return 0
+  fi
+
+  return 1
+}
+
+if is_unsafe_destination "$dest_real"; then
+  echo "Error: Destination directory ($dest_real) is broad, unsafe, or a system root directory." >&2
+  exit 1
+fi
+
 if [[ "$dest_real" == "$state_real" || "$dest_real" == "$state_real"/* ]]; then
   echo "Error: Backup destination ($dest_real) cannot be inside or equal to the state directory ($state_real)." >&2
+  exit 1
+fi
+
+if [[ "$state_real" == "$dest_real"/* ]]; then
+  echo "Error: State directory ($state_real) cannot be inside backup destination ($dest_real)." >&2
   exit 1
 fi
 
@@ -84,6 +129,20 @@ if [[ -d "$base_plus5" && ( "$dest_real" == "$base_real" || "$dest_real" == "$ba
   echo "Error: Backup destination ($dest_real) cannot be inside or equal to the service home directory ($base_real)." >&2
   exit 1
 fi
+
+# Audit symlinks in state directory before backing up
+while IFS= read -r -d '' link_file; do
+  target_link=$(readlink "$link_file" 2>/dev/null || true)
+  resolved_link=$(canonical_path "$link_file")
+  if [[ "$resolved_link" != "$state_real"/* ]]; then
+    echo "Error: State directory contains unsafe symlink pointing outside state: $link_file -> $target_link" >&2
+    exit 1
+  fi
+  if [[ "$target_link" =~ \.\. ]]; then
+    echo "Error: State directory contains symlink with traversal: $link_file -> $target_link" >&2
+    exit 1
+  fi
+done < <(find "$state_real" -type l -print0)
 
 get_fs_id() {
   local target="$1"
@@ -142,13 +201,19 @@ chmod 0700 "$backup_dir" 2>/dev/null || true
 echo "Copying state files from $STATE_DIR to $backup_dir..."
 (
   cd "$STATE_DIR"
-  tar --exclude='pre_restore_safety_backup_*' \
+  tar --exclude='pre_restore_safety_backup*' \
+      --exclude='pre_restore_safety_backups' \
+      --exclude='*.pre_swap*' \
       --exclude='*.tmp*' \
       --exclude='restore_in_progress.json' \
       -cf - . | (cd "$backup_dir" && tar -xf -)
 )
 
-chmod -R u=rwX,go= "$backup_dir" 2>/dev/null || true
+find "$backup_dir" -type d -exec chmod 0700 {} + 2>/dev/null || true
+find "$backup_dir" -type f -exec chmod 0600 {} + 2>/dev/null || true
+if [[ $(id -u) -eq 0 ]] && id "$ACCOUNT" >/dev/null 2>&1; then
+  chown -R "$ACCOUNT:$ACCOUNT" "$backup_dir" 2>/dev/null || true
+fi
 
 (
   cd "$backup_dir"
@@ -168,6 +233,8 @@ chmod -R u=rwX,go= "$backup_dir" 2>/dev/null || true
     exit 1
   fi
 )
+
+chmod 0600 "$backup_dir/SHA256SUMS" 2>/dev/null || true
 
 file_count=$(find "$backup_dir" -type f ! -name 'SHA256SUMS' | wc -l | tr -d ' ')
 integrity_status="VERIFIED (PASS)"

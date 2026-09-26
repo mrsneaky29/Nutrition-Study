@@ -71,48 +71,41 @@ Because physical disk crashes or cloud droplet accidental termination will destr
 
 ## 2. Server Installation & Directory Layout
 
-### Step 1: Install System Dependencies
-Connect to the VPS as root and install the required tools, Dart SDK, and Caddy:
+### Step 1: Install System Dependencies & Layout
+You can install dependencies and initialize the service layout using `install-host.sh`:
 
 ```bash
-# Update base system
-sudo apt-get update && sudo apt-get upgrade -y
-sudo apt-get install -y curl tar coreutils openssl ufw
+# Option A: Automated installation of Dart SDK, Caddy, system user, and directories (Ubuntu/Debian)
+sudo bash tool/vps/install-host.sh --install-deps --install-service
 
-# Install Dart SDK (official Google repository)
-sudo apt-get install -y apt-transport-https
-sudo sh -c 'wget -qO- https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/dart.gpg'
-sudo sh -c 'echo "deb [signed-by=/usr/share/keyrings/dart.gpg] https://storage.googleapis.com/download.dartlang.org/linux/debian stable main" > /etc/apt/sources.list.d/dart_stable.list'
+# Option B: Manual prerequisite installation followed by layout initialization
+# 1. Update base packages
+sudo apt-get update && sudo apt-get upgrade -y
+sudo apt-get install -y curl tar coreutils openssl ufw apt-transport-https gpg
+
+# 2. Install Dart SDK (official Google repository)
+install -d -m 0755 /usr/share/keyrings
+curl -fsSL https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/dart.gpg --yes
+echo "deb [signed-by=/usr/share/keyrings/dart.gpg] https://storage.googleapis.com/download.dartlang.org/linux/debian stable main" | sudo tee /etc/apt/sources.list.d/dart_stable.list
 sudo apt-get update && sudo apt-get install -y dart
 
-# Install Caddy (official repository)
-sudo apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+# 3. Install Caddy (official repository)
+curl -fsSL 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg --yes
+curl -fsSL 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
 sudo apt-get update && sudo apt-get install -y caddy
-```
 
-### Step 2: Initialize System Layout & Service Account
-Run `install-host.sh` as root to create the unprivileged system account and directory layout:
-
-```bash
-sudo bash tool/vps/install-host.sh
+# 4. Initialize system layout and service account
+sudo bash tool/vps/install-host.sh --install-service
 ```
 
 This creates:
-- **Service account**: `plus5-vps` (system user without shell access, home `/var/lib/plus5-vps`).
+- **Service account**: `plus5-vps` (system user without login shell, home `/var/lib/plus5-vps`).
 - **Deployment root**: `/opt/plus5-vps/releases` (owned by `root:root`, mode `0755`).
 - **Live state directory**: `/var/lib/plus5-vps/state` (owned by `plus5-vps:plus5-vps`, mode `0700`).
 - **Configuration directory**: `/etc/plus5-vps` (owned by `root:plus5-vps`, mode `0750`).
+- **Environment template**: `/etc/plus5-vps/local-sync.env` (owned by `root:plus5-vps`, mode `0640`).
+- **systemd Unit**: `/etc/systemd/system/plus5-vps.service` (mode `0644`).
 
-### Step 3: Install the systemd Service
-Copy and enable the systemd unit file:
-
-```bash
-sudo cp tool/vps/systemd/plus5-vps.service /etc/systemd/system/plus5-vps.service
-sudo systemctl daemon-reload
-sudo systemctl enable plus5-vps
-```
 
 ---
 
@@ -186,17 +179,30 @@ Release archives are standard `.tar.gz` bundles produced by the project build pi
 ```bash
 sudo bash tool/vps/import-release.sh /path/to/release-2026-09-26.tar.gz
 ```
-The script validates directory safety, unpacks to `/opt/plus5-vps/releases/<RELEASE_ID>`, locks permissions to read-only, and outputs the `<RELEASE_ID>`.
+The script validates archive path safety (no absolute or `..` paths), unpacks to `/opt/plus5-vps/releases/<RELEASE_ID>`, and enforces explicit safe permissions:
+- **Directories**: `0755` (`rwxr-xr-x`), ensuring traversal access for `root`, `plus5-vps`, and `caddy`.
+- **Files**: `0644` (`rw-r--r--`), ensuring read access for `plus5-vps` and `caddy`.
+- **Executable files**: `0755` (`rwxr-xr-x`).
+- **Write protection**: Removes group and world write permissions (`chmod -R go-w`).
+- **Ownership**: Assigned to `root:root` (or configurable via `RELEASE_OWNER_USER:RELEASE_OWNER_GROUP`).
 
-### Step 3: Activate Release
+### Step 3: Activate Release (Restart-Based Deployment)
+> [!NOTE]
+> Release deployment is **restart-based** (not zero-downtime). The service process is restarted via `systemctl restart plus5-vps.service`, introducing a brief interruption window (< 1–2 seconds) while the Dart VM reloads.
+
 ```bash
 sudo bash tool/vps/activate-release.sh <RELEASE_ID>
 ```
-Activation performs the following atomically:
-1. Points `/opt/plus5-vps/previous` to the currently active release.
+Activation performs the following verified workflow:
+1. Links `/opt/plus5-vps/previous` to the currently active release.
 2. Updates `/opt/plus5-vps/current` to the new release directory using atomic symlink replacement (`mv -Tf`).
 3. Restarts `plus5-vps.service`.
-4. If service restart fails, it automatically reverts `/opt/plus5-vps/current` to `previous`.
+4. **Bounded Health Verification**: Polls the internal sync daemon at `http://127.0.0.1:8787/health` with `X-Forwarded-Proto: https` and `X-Local-Sync-Key` with a 15-second deadline.
+5. **Automatic Rollback on Failure**: If the service fails to restart or the health check does not confirm healthy status within the bounded window:
+   - Rolls `/opt/plus5-vps/current` back to the `previous` release pointer.
+   - Restarts `plus5-vps.service` under the known-good release.
+   - Exits with an actionable failure code.
+
 
 ### Step 4: Smoke Test & Health Check
 ```bash
@@ -264,13 +270,12 @@ rclone copy /mnt/backups/ spaces:study-backups-blr1/vps/
 ### C. Restoring State from Backup (`restore-state.sh`)
 
 The `tool/vps/restore-state.sh` utility safely restores records and state files:
-- Validates the backup directory and verifies all cryptographic checksums in `SHA256SUMS` **before modifying the target**.
-- Stops the `plus5-vps` systemd service if running.
-- **Automatic Rollback Snapshot**: If the target state directory contains existing records, it archives them to a timestamped safety folder (`pre_restore_safety_backup_<timestamp>`) before overwriting.
-- Restores all state files to target (`/var/lib/plus5-vps/state`).
-- Restores proper ownership (`plus5-vps:plus5-vps`) and mode `0700`.
-- Verifies all restored files exist and match backup hashes.
-- Automatically restarts `plus5-vps` if it was running prior to the restore.
+- **Boundary & Path Validation**: Validates that target is a dedicated directory (refusing root `/` or system paths `/var`, `/etc`, etc.), checks for directory traversal (`..`), unsafe symlinks, and forbids source/target path overlap.
+- **Isolated Staging Verification**: Extracts/copies backup into an isolated staging directory and verifies `SHA256SUMS` **before touching the target state directory**.
+- **External Pre-Restore Safety Snapshot**: If the target state contains existing records, archives them to a timestamped directory located **outside** the state directory being replaced (e.g. `/var/lib/plus5-vps/pre_restore_safety_backups/safety_backup_<timestamp>`) with a verified `SHA256SUMS` manifest.
+- **Clean State Replacement (No Stale Files)**: Atomically swaps the verified staging directory into target state while the service is stopped, eliminating any stale, orphaned, or corrupted files from the previous state.
+- **Restores Ownership & Permissions**: Mode `0700` on state directory, mode `0600` on JSON state files, owner `plus5-vps:plus5-vps`.
+- **Automatic Rollback**: If any failure occurs during swap, verification, or service startup, automatically reverts to the pre-restore state and restarts the service.
 
 ```bash
 # Usage:
@@ -279,26 +284,27 @@ sudo bash tool/vps/restore-state.sh /mnt/backups/backup_20260926_120000
 
 **Output Example**:
 ```text
-Step 1: Verifying backup integrity before touching target...
-Backup integrity verified: all checksums matched.
-Step 2: Service plus5-vps is active. Stopping service...
-Step 3: Target state directory contains existing records.
-        Creating automatic rollback safety snapshot in: /var/lib/plus5-vps/state/pre_restore_safety_backup_20260926_120500
-Safety snapshot created and verified at /var/lib/plus5-vps/state/pre_restore_safety_backup_20260926_120500
-Step 4: Restoring state files into /var/lib/plus5-vps/state...
-Step 5: Restoring file ownership (plus5-vps:plus5-vps) and permissions...
-Step 6: Verifying restored files and checksums...
+Step 1: Validating source and target boundaries...
+Step 2: Staging backup and verifying cryptographic integrity...
+Staging integrity verified: all checksums matched.
+Step 3: Service plus5-vps is active. Stopping service...
+Step 4: Target state directory contains existing records.
+        Creating verified pre-restore safety snapshot in: /var/lib/plus5-vps/pre_restore_safety_backups/safety_backup_20260926_120500
+Safety snapshot created and verified.
+Step 5: Performing atomic state swap (clean replacement, no stale files)...
+Step 6: Setting state ownership (plus5-vps:plus5-vps) and permissions (0700/0600)...
+Step 7: Verifying restored files against backup manifest...
 OK  .local_data/conflicts.json
 OK  .local_data/records.json
 OK  .local_data/records.json.bak
-All restored files exist and match backup checksums.
-Step 7: Restarting service plus5-vps...
+All restored files verified successfully.
+Step 8: Restarting service plus5-vps...
 Service plus5-vps restarted successfully.
 ==================================================
 Restore Status:   SUCCESS
 Restored From:    /mnt/backups/backup_20260926_120000
 Restored To:      /var/lib/plus5-vps/state
-Safety Snapshot:  /var/lib/plus5-vps/state/pre_restore_safety_backup_20260926_120500
+Safety Snapshot:  /var/lib/plus5-vps/pre_restore_safety_backups/safety_backup_20260926_120500
 Integrity Status: VERIFIED (PASS)
 ==================================================
 ```
