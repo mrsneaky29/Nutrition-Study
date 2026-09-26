@@ -8,7 +8,7 @@ User=plus5-vps
 Group=plus5-vps
 WorkingDirectory=/var/lib/plus5-vps/state
 EnvironmentFile=/etc/plus5-vps/local-sync.env
-ExecStart=/usr/bin/dart run /opt/plus5-vps/current/tool/local_sync_server.dart --host=127.0.0.1 --port=8787
+ExecStart=/usr/bin/dart /opt/plus5-vps/current/tool/local_sync_server.dart --host=127.0.0.1 --port=8787
 Restart=on-failure
 RestartSec=3
 UMask=0077

@@ -312,15 +312,15 @@ class _LocalDemoAppState extends State<LocalDemoApp>
       final raw = _envCollectorId.trim().toUpperCase();
       final match = RegExp(r'^C?(\d+)$').firstMatch(raw);
       if (match != null) {
-        final num = int.tryParse(match.group(1)!);
-        if (num != null && num >= 1 && num <= 99) {
+        final num = BigInt.tryParse(match.group(1)!);
+        if (num != null && num >= BigInt.one) {
           return 'C${num.toString().padLeft(3, '0')}';
         }
       }
     }
     if (_envCollectorNumber.isNotEmpty) {
-      final num = int.tryParse(_envCollectorNumber.trim());
-      if (num != null && num >= 1 && num <= 99) {
+      final num = BigInt.tryParse(_envCollectorNumber.trim());
+      if (num != null && num >= BigInt.one) {
         return 'C${num.toString().padLeft(3, '0')}';
       }
     }
@@ -439,13 +439,13 @@ class _LocalDemoAppState extends State<LocalDemoApp>
     final rawCode = credentials.collectorCode.trim().toUpperCase();
     final numberMatch = RegExp(r'^C?(\d+)$').firstMatch(rawCode);
     final number = numberMatch != null
-        ? int.tryParse(numberMatch.group(1)!)
+        ? BigInt.tryParse(numberMatch.group(1)!)
         : null;
 
-    if (number == null || number < 1 || number > 99) {
+    if (number == null || number < BigInt.one) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Collector number must be between 1 and 99.'),
+          content: Text('Collector number must be positive.'),
         ),
       );
       return;
@@ -648,7 +648,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
                   child: Padding(
                     padding: EdgeInsets.all(10),
                     child: Text(
-                      'LOCAL DEMO · collector numbers: 1 to 99',
+                      'LOCAL DEMO · enter your assigned collector number',
                       textAlign: TextAlign.center,
                     ),
                   ),

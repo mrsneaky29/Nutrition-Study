@@ -2,15 +2,15 @@
 ///
 /// Supported formats:
 /// 1. Collector-scoped IDs (no practical limit):
-///    `C<collectorNum>-<sequence>`, e.g., `C01-000001`, `C02-000002`, `C99-000001`.
-///    - Collector numbers: 1 to 99 (formatted with 2 digits `C01`..`C99`).
+///    `C<collectorNum>-<sequence>`, e.g., `C01-000001`, `C02-000002`.
+///    - Collector numbers: any positive number (formatted with at least 2 digits).
 ///    - Sequence numbers: positive, with at least six digits (no upper cap).
 /// 2. Legacy demo IDs:
 ///    `P<sequence>`, e.g., `P001`, `P002`, `P101`, `P0001`.
 library;
 
 /// Matches collector-scoped IDs like `C01-000001` or `C001-000001`.
-final _collectorScopedRegex = RegExp(r'^C(\d{2,3})-(\d{6,})$', caseSensitive: false);
+final _collectorScopedRegex = RegExp(r'^C(\d{2,})-(\d{6,})$', caseSensitive: false);
 
 /// Matches legacy IDs like `P001`, `P0001`.
 final _legacyParticipantRegex = RegExp(r'^P(\d{3,})$', caseSensitive: false);
@@ -28,9 +28,9 @@ String? normalizeParticipantStudyId(String? studyId) {
   if (trimmed.isEmpty) return null;
   final collectorMatch = _collectorScopedRegex.firstMatch(trimmed);
   if (collectorMatch != null) {
-    final collectorNum = int.tryParse(collectorMatch.group(1)!);
+    final collectorNum = BigInt.tryParse(collectorMatch.group(1)!);
     final seqNum = int.tryParse(collectorMatch.group(2)!);
-    if (collectorNum == null || collectorNum < 1 || collectorNum > 99 ||
+    if (collectorNum == null || collectorNum < BigInt.one ||
         seqNum == null || seqNum < 1) {
       return null;
     }
@@ -50,14 +50,14 @@ String? normalizeParticipantStudyId(String? studyId) {
   return null;
 }
 
-/// Generates a collector-scoped Study ID from a collector number (1-99)
+/// Generates a collector-scoped Study ID from any positive collector number
 /// and any positive sequence number.
 String formatCollectorParticipantStudyId(int collectorNumber, int sequenceNumber) {
-  if (collectorNumber < 1 || collectorNumber > 99) {
+  if (collectorNumber < 1) {
     throw ArgumentError.value(
       collectorNumber,
       'collectorNumber',
-      'Collector number must be between 1 and 99.',
+      'Collector number must be positive.',
     );
   }
   if (sequenceNumber < 1) {
@@ -74,7 +74,7 @@ String formatCollectorParticipantStudyId(int collectorNumber, int sequenceNumber
 
 /// Returns the expected prefix for a collector number, e.g. `C01-` for collector 1.
 String collectorParticipantPrefix(int collectorNumber) {
-  if (collectorNumber < 1 || collectorNumber > 99) {
+  if (collectorNumber < 1) {
     throw ArgumentError.value(collectorNumber, 'collectorNumber');
   }
   return 'C${collectorNumber.toString().padLeft(2, '0')}-';

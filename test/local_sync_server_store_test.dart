@@ -1541,13 +1541,25 @@ void main() {
     late String baseUrl;
     const collectorKeyA = 'collector-alpha-key-123';
     const collectorKeyB = 'collector-bravo-key-456';
+    const collectorKey100 = 'collector-hundred-key-789';
+    const collectorKey1000 = 'collector-thousand-key-789';
     const adminKey = 'admin-secure-master-key-789';
 
     setUp(() async {
       final accessKeys = const AccessKeys(
-        collectorKeys: {collectorKeyA, collectorKeyB},
+        collectorKeys: {
+          collectorKeyA,
+          collectorKeyB,
+          collectorKey100,
+          collectorKey1000,
+        },
         admin: adminKey,
-        collectorIdentities: {collectorKeyA: 'C001', collectorKeyB: 'C002'},
+        collectorIdentities: {
+          collectorKeyA: 'C001',
+          collectorKeyB: 'C002',
+          collectorKey100: 'C100',
+          collectorKey1000: 'C1000',
+        },
       );
       server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       server.listen((request) => handleRequest(request, store, accessKeys));
@@ -1564,7 +1576,6 @@ void main() {
         'P01',
         'C1-000001',
         'C01-12345',
-        'C0001-000001',
       ]) {
         final response = await http.post(
           Uri.parse('$baseUrl/records'),
@@ -1583,7 +1594,7 @@ void main() {
     });
 
     test(
-      'accepts valid studyId formats (C01-000001, C001-000001, P001, P1001)',
+      'accepts legacy, padded, and unbounded collector studyId formats',
       () async {
         final response1 = await http.post(
           Uri.parse('$baseUrl/records'),
@@ -1635,6 +1646,42 @@ void main() {
           ),
         );
         expect(response3.statusCode, HttpStatus.ok);
+
+        final response4 = await http.post(
+          Uri.parse('$baseUrl/records'),
+          headers: {
+            'content-type': 'application/json',
+            'x-local-sync-key': collectorKey100,
+          },
+          body: jsonEncode(
+            _submission(
+              id: 'v4',
+              key: 'k4',
+              studyId: 'C100-000001',
+              collectorId: 'C100',
+              phone: '+919000000004',
+            ),
+          ),
+        );
+        expect(response4.statusCode, HttpStatus.ok);
+
+        final response5 = await http.post(
+          Uri.parse('$baseUrl/records'),
+          headers: {
+            'content-type': 'application/json',
+            'x-local-sync-key': collectorKey1000,
+          },
+          body: jsonEncode(
+            _submission(
+              id: 'v5',
+              key: 'k5',
+              studyId: 'C1000-000001',
+              collectorId: 'C1000',
+              phone: '+919000000005',
+            ),
+          ),
+        );
+        expect(response5.statusCode, HttpStatus.ok);
       },
     );
 

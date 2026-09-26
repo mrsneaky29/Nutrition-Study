@@ -13,7 +13,9 @@ $aapt = Join-Path $BuildToolsDirectory 'aapt.exe'
 foreach ($tool in @($signer, $aapt)) {
   if (-not (Test-Path -LiteralPath $tool)) { throw "Missing Android verification tool: $tool" }
 }
+$ErrorActionPreference = 'Continue'
 $signature = @(& $signer verify --verbose --print-certs $apk 2>&1)
+$ErrorActionPreference = 'Stop'
 if ($LASTEXITCODE -ne 0) { throw 'APK signature verification failed.' }
 $certificates = @($signature | Select-String 'certificate SHA-256 digest:\s*([0-9a-fA-F]+)' | ForEach-Object { $_.Matches[0].Groups[1].Value.ToLowerInvariant() })
 if ($certificates.Count -ne 1 -or $certificates[0] -ne $ExpectedCertificateSha256.ToLowerInvariant()) {

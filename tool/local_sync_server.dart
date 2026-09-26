@@ -1413,9 +1413,9 @@ class LocalRecordStore {
           (r) => _participant(r)['studyId'] == studyId,
         );
         if (isNewParticipant) {
-          final studyMatch = RegExp(r'^C(\d{2,3})-').firstMatch(studyId);
+          final studyMatch = RegExp(r'^C(\d{2,})-').firstMatch(studyId);
           if (studyMatch != null) {
-            final studyCollectorNum = int.tryParse(studyMatch.group(1)!);
+            final studyCollectorNum = BigInt.tryParse(studyMatch.group(1)!);
             final authCollectorNum = _extractCollectorNumber(
               authenticatedCollectorId,
             );
@@ -1784,12 +1784,12 @@ void _validateRecord(Map<String, dynamic> record) {
     _requireText(participantMap[field], 'participant.$field');
   }
   final studyId = participantMap['studyId'] as String;
-  final collectorIdMatch = RegExp(r'^C(\d{2,3})-(\d{6,})$').firstMatch(studyId);
+  final collectorIdMatch = RegExp(r'^C(\d{2,})-(\d{6,})$').firstMatch(studyId);
   final legacyIdMatch = RegExp(r'^P(\d{3,})$').firstMatch(studyId);
   final validCollectorId =
       collectorIdMatch != null &&
-      (int.tryParse(collectorIdMatch.group(1)!) ?? 0) > 0 &&
-      (int.tryParse(collectorIdMatch.group(1)!) ?? 0) <= 99 &&
+      (BigInt.tryParse(collectorIdMatch.group(1)!) ?? BigInt.zero) >
+          BigInt.zero &&
       (BigInt.tryParse(collectorIdMatch.group(2)!) ?? BigInt.zero) >
           BigInt.zero;
   final validLegacyId =
@@ -2163,17 +2163,17 @@ Object? _canonicalJsonValue(Object? value) {
 
 bool _isArchived(Map<String, dynamic> record) => record['archivedAt'] != null;
 
-int? _extractCollectorNumber(String collectorId) {
+BigInt? _extractCollectorNumber(String collectorId) {
   final match = RegExp(
     r'^C(\d+)$',
     caseSensitive: false,
   ).firstMatch(collectorId.trim());
   if (match != null) {
-    return int.tryParse(match.group(1)!);
+    return BigInt.tryParse(match.group(1)!);
   }
   final matchDigits = RegExp(r'(\d+)$').firstMatch(collectorId.trim());
   if (matchDigits != null) {
-    return int.tryParse(matchDigits.group(1)!);
+    return BigInt.tryParse(matchDigits.group(1)!);
   }
   return null;
 }
