@@ -11,6 +11,8 @@ import '../domain/participant_id.dart';
 import '../domain/participant_profile.dart';
 import '../domain/study_configuration.dart';
 import '../domain/visit_record.dart';
+import 'collectors/collector_account.dart';
+import 'collectors/collector_account_gateway.dart';
 
 /// Contract for server conflict inbox management.
 abstract class ServerConflictRepository {
@@ -24,7 +26,12 @@ abstract class ServerConflictRepository {
 ///
 /// It deliberately implements only administrator operations. The collector
 /// application does not create or use this repository.
-class LocalApiVisitRepository implements VisitRepository, ServerConflictRepository {
+class LocalApiVisitRepository
+    implements
+        VisitRepository,
+        ServerConflictRepository,
+        CollectorAccountGateway,
+        CollectorQrGateway {
   LocalApiVisitRepository({
     required this.apiKey,
     String? baseUrl,
@@ -42,6 +49,81 @@ class LocalApiVisitRepository implements VisitRepository, ServerConflictReposito
   final String apiKey;
 
   Uri _uri(String path) => _baseUri.resolve(path);
+
+  CollectorAccount _collector(dynamic raw) {
+    final value = _map(raw);
+    return CollectorAccount(
+      code: value['code'] as String,
+      displayName: value['displayName'] as String?,
+      status: value['status'] == 'active'
+          ? CollectorAccountStatus.active
+          : CollectorAccountStatus.disabled,
+      createdAt: DateTime.parse(value['createdAt'] as String),
+    );
+  }
+
+  @override
+  Future<List<CollectorAccount>> listCollectors(AuthenticatedUser admin) async {
+    _requireAdmin(admin);
+    final value = _map(_decode(await _get('/collectors')));
+    return (value['collectors'] as List).map(_collector).toList();
+  }
+
+  @override
+  Future<CollectorAccount> createNextCollector(
+    AuthenticatedUser admin, {
+    String? displayName,
+  }) async {
+    _requireAdmin(admin);
+    return _collector(
+      _decode(await _post('/collectors', {'displayName': displayName})),
+    );
+  }
+
+  @override
+  Future<CollectorAccount> disableCollector(
+    AuthenticatedUser admin,
+    String collectorCode,
+  ) async {
+    _requireAdmin(admin);
+    return _collector(
+      _decode(
+        await _post(
+          '/collectors/${Uri.encodeComponent(collectorCode)}/disable',
+          {},
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<CollectorAccount> resetDeviceBinding(
+    AuthenticatedUser admin,
+    String collectorCode,
+  ) async {
+    _requireAdmin(admin);
+    return _collector(
+      _decode(
+        await _post(
+          '/collectors/${Uri.encodeComponent(collectorCode)}/reset-session',
+          {},
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<String> signInQrPayload(
+    AuthenticatedUser admin,
+    String collectorCode,
+  ) async {
+    _requireAdmin(admin);
+    return jsonEncode(
+      _decode(
+        await _post('/collectors/${Uri.encodeComponent(collectorCode)}/qr', {}),
+      ),
+    );
+  }
 
   @override
   Future<List<VisitRecord>> listVisibleTo(AuthenticatedUser actor) async {
@@ -138,12 +220,9 @@ class LocalApiVisitRepository implements VisitRepository, ServerConflictReposito
 
   @override
   Future<void> reviewConflict(String id, {String? notes}) async {
-    await _post(
-      '/conflicts/${Uri.encodeComponent(id)}/review',
-      {
-        'notes': ?notes,
-      },
-    );
+    await _post('/conflicts/${Uri.encodeComponent(id)}/review', {
+      'notes': ?notes,
+    });
   }
 
   @override
@@ -151,10 +230,7 @@ class LocalApiVisitRepository implements VisitRepository, ServerConflictReposito
     String id,
     Map<String, dynamic> resolution,
   ) async {
-    await _post(
-      '/conflicts/${Uri.encodeComponent(id)}/resolve',
-      resolution,
-    );
+    await _post('/conflicts/${Uri.encodeComponent(id)}/resolve', resolution);
   }
 
   @override

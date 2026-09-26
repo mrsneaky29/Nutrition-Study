@@ -28,3 +28,8 @@ abstract interface class CollectorAccountGateway {
     String collectorCode,
   );
 }
+
+/// Separate capability: demo gateways cannot issue production credentials.
+abstract interface class CollectorQrGateway {
+  Future<String> signInQrPayload(AuthenticatedUser admin, String collectorCode);
+}

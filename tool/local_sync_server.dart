@@ -31,7 +31,9 @@ Future<void> main(List<String> arguments) async {
     exitCode = 64;
     return;
   } on ArgumentError catch (error) {
-    stderr.writeln('Invalid local sync configuration: ${error.message ?? error}');
+    stderr.writeln(
+      'Invalid local sync configuration: ${error.message ?? error}',
+    );
     exitCode = 64;
     return;
   }
@@ -370,7 +372,9 @@ Future<void> handleRequest(
     }
 
     final suppliedKey = request.headers.value('x-local-sync-key');
-    final isCollector = accessKeys.isCollector(suppliedKey);
+    store.seedCollectorAccounts(accessKeys);
+    final collectorIdentity = store.collectorIdentityForKey(suppliedKey);
+    final isCollector = collectorIdentity != null;
     final isAdmin = accessKeys.isAdmin(suppliedKey);
     if (!isCollector && !isAdmin) {
       if (accessKeys.publicMode &&
@@ -390,14 +394,56 @@ Future<void> handleRequest(
     }
 
     final segments = request.uri.pathSegments;
-    final isSessionRoute = request.method == 'POST' &&
+    if (segments.isNotEmpty && segments.first == 'collectors') {
+      _requireAdminAccess(isAdmin);
+      request.response.headers.set('Cache-Control', 'no-store');
+      if (segments.length == 1 && request.method == 'GET') {
+        await _writeJson(request.response, 200, {
+          'collectors': store.listCollectorAccounts(),
+        });
+      } else if (segments.length == 1 && request.method == 'POST') {
+        final body = await _readJsonObject(request);
+        await _writeJson(
+          request.response,
+          201,
+          await store.createCollectorAccount(body['displayName']),
+        );
+      } else if (segments.length == 3 && request.method == 'POST') {
+        final code = segments[1];
+        switch (segments[2]) {
+          case 'qr':
+            await _writeJson(request.response, 200, store.collectorSetup(code));
+          case 'disable':
+            await _writeJson(
+              request.response,
+              200,
+              await store.disableCollectorAccount(code),
+            );
+          case 'reset-session':
+            store.requireCollectorAccount(code);
+            await store.openCollectorSession(code);
+            await _writeJson(
+              request.response,
+              200,
+              store.requireCollectorAccount(code),
+            );
+          default:
+            throw const ApiException(404, 'Unknown collector operation.');
+        }
+      } else {
+        throw const ApiException(405, 'Unsupported collector operation.');
+      }
+      return;
+    }
+    final isSessionRoute =
+        request.method == 'POST' &&
         ((segments.length == 2 &&
-            segments[0] == 'collector' &&
-            segments[1] == 'session') ||
-         (segments.length == 3 &&
-            segments[0] == 'sync' &&
-            segments[1] == 'session' &&
-            segments[2] == 'bootstrap'));
+                segments[0] == 'collector' &&
+                segments[1] == 'session') ||
+            (segments.length == 3 &&
+                segments[0] == 'sync' &&
+                segments[1] == 'session' &&
+                segments[2] == 'bootstrap'));
     if (isSessionRoute) {
       if (!isCollector) {
         throw const ApiException(
@@ -405,7 +451,7 @@ Future<void> handleRequest(
           'Collector access required.',
         );
       }
-      final identity = accessKeys.collectorIdForKey(suppliedKey)!;
+      final identity = collectorIdentity;
       final payload = await _readJsonObject(request);
       final declaredCollectorId = payload['collectorId'];
       if (declaredCollectorId != null && declaredCollectorId != identity) {
@@ -422,7 +468,7 @@ Future<void> handleRequest(
       return;
     }
     if (isCollector && accessKeys.requireCollectorSession && !isAdmin) {
-      final identity = accessKeys.collectorIdForKey(suppliedKey)!;
+      final identity = collectorIdentity;
       final token = request.headers.value('x-local-session');
       if (!store.isCurrentCollectorSession(identity, token)) {
         throw const ApiException(
@@ -432,11 +478,12 @@ Future<void> handleRequest(
         );
       }
     }
-    final isHealthRoute = request.method == 'GET' &&
+    final isHealthRoute =
+        request.method == 'GET' &&
         ((segments.length == 1 && segments.single == 'health') ||
-         (segments.length == 2 &&
-          segments[0] == 'sync' &&
-          segments[1] == 'health'));
+            (segments.length == 2 &&
+                segments[0] == 'sync' &&
+                segments[1] == 'health'));
     if (isHealthRoute) {
       await _writeJson(request.response, HttpStatus.ok, {
         'status': store.recoveredFromBackup ? 'degraded' : 'ok',
@@ -469,8 +516,8 @@ Future<void> handleRequest(
     final isRecordsRoute =
         (segments.length == 1 && segments.single == 'records') ||
         (segments.length == 2 &&
-         segments[0] == 'sync' &&
-         segments[1] == 'records');
+            segments[0] == 'sync' &&
+            segments[1] == 'records');
     if (request.method == 'GET' && isRecordsRoute) {
       _requireAdminAccess(isAdmin);
       await _writeJson(request.response, HttpStatus.ok, store.records());
@@ -484,12 +531,9 @@ Future<void> handleRequest(
         );
       }
       final payload = await _readJsonObject(request);
-      final authenticatedCollectorId = accessKeys.collectorIdForKey(
-        suppliedKey,
-      );
+      final authenticatedCollectorId = collectorIdentity;
       final recordCollectorId = payload['collectorId'];
-      if (authenticatedCollectorId != null &&
-          recordCollectorId != authenticatedCollectorId) {
+      if (recordCollectorId != authenticatedCollectorId) {
         throw const ApiException(
           HttpStatus.forbidden,
           'Collector identity in payload does not match authenticated credential.',
@@ -819,6 +863,124 @@ class LocalRecordStore {
   final Map<String, Map<String, dynamic>> _records = {};
   final Map<String, Map<String, dynamic>> _conflicts = {};
   final Map<String, String> _collectorSessions = {};
+  final Map<String, Map<String, dynamic>> _collectorAccounts = {};
+  File get _collectorAccountsFile => File(
+    '${_dataDirectory.path}${Platform.pathSeparator}collector_accounts.json',
+  );
+
+  void seedCollectorAccounts(AccessKeys keys) {
+    for (final key in keys.collectorKeys) {
+      final code = keys.collectorIdForKey(key)!;
+      _collectorAccounts.putIfAbsent(
+        code,
+        () => {
+          'code': code,
+          'key': key,
+          'status': 'active',
+          'createdAt': DateTime.now().toUtc().toIso8601String(),
+        },
+      );
+    }
+  }
+
+  String? collectorIdentityForKey(String? key) {
+    if (key == null || key.isEmpty) return null;
+    for (final account in _collectorAccounts.values) {
+      if (account['key'] == key && account['status'] == 'active') {
+        return account['code'] as String;
+      }
+    }
+    return null;
+  }
+
+  Map<String, dynamic> _safeCollector(Map<String, dynamic> value) => {
+    'code': value['code'],
+    'displayName': value['displayName'],
+    'status': value['status'],
+    'createdAt': value['createdAt'],
+  };
+
+  List<Map<String, dynamic>> listCollectorAccounts() =>
+      (_collectorAccounts.values.map(_safeCollector).toList()
+        ..sort((a, b) => a['code'].toString().compareTo(b['code'].toString())));
+
+  Map<String, dynamic> requireCollectorAccount(String code) {
+    final value = _collectorAccounts[code];
+    if (value == null) throw const ApiException(404, 'Collector not found.');
+    return _safeCollector(value);
+  }
+
+  Map<String, dynamic> collectorSetup(String code) {
+    requireCollectorAccount(code);
+    final value = _collectorAccounts[code]!;
+    if (value['status'] != 'active') {
+      throw const ApiException(403, 'Collector is disabled.');
+    }
+    return {
+      'type': 'nutrition_study_collector_setup',
+      'v': 1,
+      'collectorNumber': int.parse(code.substring(1)),
+      'collectorKey': value['key'],
+    };
+  }
+
+  Future<void> _saveCollectorAccounts(
+    Map<String, Map<String, dynamic>> next,
+  ) async {
+    final temporary = File('${_collectorAccountsFile.path}.tmp-$pid');
+    try {
+      await temporary.writeAsString(jsonEncode(next), flush: true);
+      if (!Platform.isWindows) {
+        final result = await Process.run('chmod', ['600', temporary.path]);
+        if (result.exitCode != 0) {
+          throw StateError('Could not protect collector credentials.');
+        }
+      }
+      // POSIX rename replaces atomically; never delete the canonical file first.
+      await temporary.rename(_collectorAccountsFile.path);
+      _collectorAccounts
+        ..clear()
+        ..addAll(next);
+    } finally {
+      if (await temporary.exists()) await temporary.delete();
+    }
+  }
+
+  Future<Map<String, dynamic>> createCollectorAccount(Object? displayName) =>
+      _serialize(() async {
+        if (displayName != null &&
+            (displayName is! String || displayName.length > 100)) {
+          throw const ApiException(
+            400,
+            'Collector name must be at most 100 characters.',
+          );
+        }
+        final number =
+            _collectorAccounts.keys
+                .map((code) => int.parse(code.substring(1)))
+                .fold<int>(0, max) +
+            1;
+        final code = 'C${number.toString().padLeft(3, '0')}';
+        final value = <String, dynamic>{
+          'code': code,
+          'key': base64Url.encode(
+            List<int>.generate(32, (_) => _random.nextInt(256)),
+          ),
+          'displayName': (displayName as String?)?.trim(),
+          'status': 'active',
+          'createdAt': DateTime.now().toUtc().toIso8601String(),
+        };
+        await _saveCollectorAccounts({..._collectorAccounts, code: value});
+        return _safeCollector(value);
+      });
+
+  Future<Map<String, dynamic>> disableCollectorAccount(String code) =>
+      _serialize(() async {
+        requireCollectorAccount(code);
+        final value = {..._collectorAccounts[code]!, 'status': 'disabled'};
+        await _saveCollectorAccounts({..._collectorAccounts, code: value});
+        return _safeCollector(value);
+      });
   Future<void> _writeTail = Future<void>.value();
   bool _primaryWasCorrupt = false;
   bool _primaryConflictsWasCorrupt = false;
@@ -843,6 +1005,28 @@ class LocalRecordStore {
     }
     await _loadRecords();
     await _loadConflicts();
+    if (await _collectorAccountsFile.exists()) {
+      // Credential corruption is fatal: never silently re-enable disabled users.
+      final decoded = jsonDecode(await _collectorAccountsFile.readAsString());
+      if (decoded is! Map<String, dynamic>) {
+        throw StateError('Invalid collector credential store.');
+      }
+      final seenKeys = <String>{};
+      for (final entry in decoded.entries) {
+        final value = entry.value;
+        if (!RegExp(r'^C\d{2,}$').hasMatch(entry.key) ||
+            value is! Map<String, dynamic> ||
+            value['code'] != entry.key ||
+            value['key'] is! String ||
+            (value['key'] as String).length < 16 ||
+            !seenKeys.add(value['key'] as String) ||
+            !['active', 'disabled'].contains(value['status']) ||
+            DateTime.tryParse(value['createdAt']?.toString() ?? '') == null) {
+          throw StateError('Invalid collector credential store.');
+        }
+        _collectorAccounts[entry.key] = value;
+      }
+    }
     // Session state is authorization state, not participant data. If a power
     // loss left only the previous .bak, or if the primary is corrupt, require
     // everyone to sign in again instead of reviving a superseded phone token.
@@ -872,6 +1056,9 @@ class LocalRecordStore {
   Future<String> openCollectorSession(
     String collectorId,
   ) => _serialize(() async {
+    if (_collectorAccounts[collectorId]?['status'] == 'disabled') {
+      throw const ApiException(HttpStatus.forbidden, 'Collector is disabled.');
+    }
     final bytes = List<int>.generate(32, (_) => _random.nextInt(256));
     final token = base64Url.encode(bytes);
     final previous = _collectorSessions[collectorId];
@@ -1340,6 +1527,14 @@ class LocalRecordStore {
       // A newer login may have completed while this request body was arriving
       // or while the upload waited behind another store write. Check again at
       // the serialized write point so the accepted upload order is unambiguous.
+      if (authenticatedCollectorId != null &&
+          _collectorAccounts[authenticatedCollectorId]?['status'] ==
+              'disabled') {
+        throw const ApiException(
+          HttpStatus.forbidden,
+          'Collector is disabled.',
+        );
+      }
       if (collectorSessionToken != null &&
           (authenticatedCollectorId == null ||
               !isCurrentCollectorSession(

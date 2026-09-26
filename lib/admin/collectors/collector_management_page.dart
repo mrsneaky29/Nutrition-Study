@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+
+import '../../collector_auth/collector_qr_payload.dart';
 
 import '../../domain/authenticated_user.dart';
 import '../access/admin_session_gateway.dart';
@@ -44,7 +47,10 @@ class _CollectorManagementPageState extends State<CollectorManagementPage> {
       final admin = await widget.sessionGateway.currentAdmin();
       if (admin == null) {
         if (mounted) {
-          setState(() => _admin = null);
+          setState(() {
+            _admin = null;
+            _accounts = null;
+          });
         }
         return;
       }
@@ -97,11 +103,85 @@ class _CollectorManagementPageState extends State<CollectorManagementPage> {
     );
   }
 
+  Future<void> _showQr(CollectorAccount account) async {
+    final admin = _admin;
+    final gateway = widget.collectorGateway;
+    if (admin == null || !account.isActive || gateway is! CollectorQrGateway) {
+      return;
+    }
+    setState(() => _isLoading = true);
+    try {
+      final payload = await (gateway as CollectorQrGateway).signInQrPayload(
+        admin,
+        account.code,
+      );
+      final parsed = CollectorQrPayload.parse(payload);
+      if ('C${parsed.collectorNumber.toString().padLeft(3, '0')}' !=
+          account.code) {
+        throw StateError('Collector mismatch.');
+      }
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Collector ${_collectorNumber(account.code)} sign-in QR'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Private access credential. Show only to this collector. Do not share publicly or upload to a QR website.',
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: 280,
+                  height: 280,
+                  child: QrImageView(
+                    data: payload,
+                    backgroundColor: Colors.white,
+                    semanticsLabel: 'Private collector sign-in QR',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Scan with the +6 collector app. Signing in on another phone replaces the previous session.',
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'The sign-in QR could not be generated. Check administrator access and try again.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _resetBinding(CollectorAccount account) async {
+    final live = widget.collectorGateway is CollectorQrGateway;
     final confirmed = await _confirm(
-      title: 'Reset collector ${_collectorNumber(account.code)} device?',
-      message: 'The currently bound phone will lose access. A replacement phone can use this collector number after the reset.',
-      action: 'Reset device access',
+      title: live
+          ? 'Reset collector ${_collectorNumber(account.code)} session?'
+          : 'Reset collector ${_collectorNumber(account.code)} device?',
+      message: live
+          ? 'The current phone session will lose access. Saved study records remain. The collector can sign in again with the same QR.'
+          : 'The currently bound phone will lose access. A replacement phone can use this collector number after the reset.',
+      action: live ? 'Reset session' : 'Reset device access',
     );
     if (!confirmed) return;
     await _runOperation(
@@ -195,6 +275,9 @@ class _CollectorManagementPageState extends State<CollectorManagementPage> {
                 onCreate: _createCollector,
                 onDisable: _disable,
                 onResetBinding: _resetBinding,
+                onQr: widget.collectorGateway is CollectorQrGateway
+                    ? _showQr
+                    : null,
               ),
       ),
     );
@@ -277,6 +360,7 @@ class _CollectorList extends StatelessWidget {
     required this.onCreate,
     required this.onDisable,
     required this.onResetBinding,
+    this.onQr,
   });
   final AuthenticatedUser admin;
   final List<CollectorAccount> accounts;
@@ -284,6 +368,7 @@ class _CollectorList extends StatelessWidget {
   final VoidCallback onCreate;
   final ValueChanged<CollectorAccount> onDisable;
   final ValueChanged<CollectorAccount> onResetBinding;
+  final ValueChanged<CollectorAccount>? onQr;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -303,7 +388,7 @@ class _CollectorList extends StatelessWidget {
       ),
       const SizedBox(height: 8),
       const Text(
-        'Create sequential numbers, check phone bindings, and safely disable or reset collector access. This area never deletes collector accounts or study records.',
+        'Create collector numbers and manage access without deleting study records. Private sign-in QR codes are reusable; the latest phone login replaces the previous session.',
         style: TextStyle(color: Color(0xFF667085)),
       ),
       const SizedBox(height: 18),
@@ -324,6 +409,7 @@ class _CollectorList extends StatelessWidget {
               disabled: isLoading,
               onDisable: () => onDisable(account),
               onResetBinding: () => onResetBinding(account),
+              onQr: onQr == null ? null : () => onQr!(account),
             ),
           ),
         ),
@@ -349,11 +435,13 @@ class _CollectorCard extends StatelessWidget {
     required this.disabled,
     required this.onDisable,
     required this.onResetBinding,
+    this.onQr,
   });
   final CollectorAccount account;
   final bool disabled;
   final VoidCallback onDisable;
   final VoidCallback onResetBinding;
+  final VoidCallback? onQr;
 
   @override
   Widget build(BuildContext context) {
@@ -384,7 +472,9 @@ class _CollectorCard extends StatelessWidget {
             ],
             const SizedBox(height: 14),
             Text(
-              binding == null
+              onQr != null
+                  ? 'Reusable QR access · no permanent phone binding'
+                  : binding == null
                   ? 'No phone currently bound'
                   : 'Bound to ${binding.label} · ${_date(binding.boundAt)}',
               style: const TextStyle(color: Color(0xFF475467)),
@@ -394,11 +484,19 @@ class _CollectorCard extends StatelessWidget {
               spacing: 10,
               runSpacing: 8,
               children: [
-                if (binding != null)
+                if (account.isActive && onQr != null)
+                  FilledButton.icon(
+                    onPressed: disabled ? null : onQr,
+                    icon: const Icon(Icons.qr_code_rounded),
+                    label: const Text('Generate sign-in QR'),
+                  ),
+                if (binding != null || onQr != null)
                   OutlinedButton.icon(
                     onPressed: disabled ? null : onResetBinding,
                     icon: const Icon(Icons.phonelink_erase_outlined),
-                    label: const Text('Reset device'),
+                    label: Text(
+                      onQr != null ? 'Reset session' : 'Reset device',
+                    ),
                   ),
                 if (account.isActive)
                   FilledButton.tonalIcon(

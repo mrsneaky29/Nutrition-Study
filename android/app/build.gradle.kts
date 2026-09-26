@@ -32,7 +32,7 @@ android {
         applicationId = if (System.getenv("STUDY_SIDE_BY_SIDE_TEST") == "true")
             "org.nutritionstudy.project2.plus5test" else "org.nutritionstudy.project2"
         manifestPlaceholders["studyAppLabel"] = if (System.getenv("STUDY_SIDE_BY_SIDE_TEST") == "true")
-            "Study Collector +6 Test" else "Study Collector"
+            "Study Collector +6.1 Test" else "Study Collector +6.1"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

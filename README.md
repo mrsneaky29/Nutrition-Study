@@ -1,5 +1,25 @@
 # Nutrition Study
 
+## Admin console +6.1
+
+Collector access now uses the real server instead of a browser-memory demo.
+Create a collector, then choose **Generate sign-in QR** on its card. The QR is
+rendered privately inside the authenticated admin console and contains a secret
+access credential; do not publish it or send it to online QR generators.
+Existing Collector 1 credentials remain valid. New collector credentials and
+disabled status are stored in the protected server state directory, included in
+encrypted state backups. A corrupt credential registry stops startup rather
+than silently re-enabling access. Reset session invalidates the current session
+without changing the reusable QR or deleting records.
+
+This update changes the admin console and supporting backend only. The installed
+collector app remains +6, using its existing QR format. Its future source display
+name is +6.1; no new phone APK has been built or installed for this update.
+
+Focused automated verification passed 24 tests and static analysis was clean;
+the admin web release build and live authenticated API checks passed. Full live
+browser acceptance of creation/refresh/QR scanning remains to be checked.
+
 Nutrition Study 1.0.0+6 adds mandatory QR sign-in for production collector
 builds. The project has two separate clients: the Android collector app
 (`lib/main.dart`) and the browser-only administrator portal (`lib/admin_main.dart`).

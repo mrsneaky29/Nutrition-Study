@@ -58,7 +58,11 @@ class _AdminEntryAppState extends State<_AdminEntryApp> {
   Widget build(BuildContext context) {
     final repository = _repository;
     if (repository != null) {
-      return AdminPortalApp(repository: repository, admin: _admin);
+      return AdminPortalApp(
+        repository: repository,
+        admin: _admin,
+        collectorGateway: repository,
+      );
     }
     return MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -78,7 +82,9 @@ class _AdminEntryAppState extends State<_AdminEntryApp> {
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 12),
-                  const Text('Enter the administrator key for the study server.'),
+                  const Text(
+                    'Enter the administrator key for the study server.',
+                  ),
                   const SizedBox(height: 24),
                   TextField(
                     controller: _keyController,
