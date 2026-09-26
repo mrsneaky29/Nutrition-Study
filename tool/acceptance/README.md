@@ -66,7 +66,7 @@ graph TD
 - **Missing Measurement Statuses:**  
   Explicitly coded as `'unable'` or `'declined'`. In CSV exports, numeric columns are empty strings `""`, and reason columns (e.g. `ncd_height_missing_reason`) contain the reason text.
 - **Study ID Structure:**  
-  In generic release mode: `C<col>-<16 digits>`, generated via secure CSPRNG sequence (`upper * 100000000 + lower`). Provides $9 \times 10^{15}$ collision-free combinations per collector.
+  In generic release mode: `C<col>-<16 digits>`, generated via secure CSPRNG sequence (`upper * 100000000 + lower`). There are $9 \times 10^{15}$ possible suffixes per collector. IDs are collision-resistant, not guaranteed collision-free; the app checks local duplicates and the server checks records during sync.
 - **Idempotency Guarantee:**  
   Upload retries for an existing record ID and matching `idempotencyKey` return HTTP `200 OK` with the existing record, without incrementing `revision` or creating duplicate rows.
 - **CORS Enforcement & Public Mode:**  

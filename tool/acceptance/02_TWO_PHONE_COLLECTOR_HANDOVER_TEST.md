@@ -15,7 +15,7 @@ In field operations, a field worker may need to switch devices (e.g. battery dep
 3. **Expired Session Detection:** When Phone 1 attempts any authenticated request (`POST /records` or `GET /participants/lookup`), the server responds with **`HTTP 401 Unauthorized`** and error code `collector_session_expired`.
 4. **Data Preservation Guarantee:** Upon session expiration, **Phone 1 NEVER deletes or truncates local SQLite/encrypted storage**. All collected offline records remain intact and are safely preserved in `pending` (or `failed`) state.
 5. **Session Reclaim & Flush:** When the collector signs back into Phone 1, a new session token is granted, and Phone 1 flushes all preserved offline records to the server without loss.
-6. **Study ID Collision Safety:** In generic release mode, each phone independently generates Study IDs using a **16-digit CSPRNG sequence** (`upper * 100000000 + lower`), yielding a state space of $9 \times 10^{15}$ unique IDs per collector. Even if both phones collect hundreds of participants offline under the same collector prefix, collision probability is virtually zero ($\approx 0$).
+6. **Study ID Collision Resistance:** In generic release mode, each phone independently generates Study IDs using a **16-digit CSPRNG sequence** (`upper * 100000000 + lower`), yielding $9 \times 10^{15}$ possible suffixes per collector. Collision probability is very small but nonzero. Local duplicate checks and server-side sync validation remain necessary; this trial verifies the sampled records, not mathematical impossibility of collisions.
 
 ---
 

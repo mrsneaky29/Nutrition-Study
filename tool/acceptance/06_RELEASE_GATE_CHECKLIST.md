@@ -41,6 +41,8 @@ flowchart TD
 
 ## 2. Gate A: Local & Pre-Domain Verification
 
+**Source requirements:** Use the merged `codex/plus5-integration` checkout for executable commands. This documentation branch started at `8f170a7`; later backup scripts (`test-offsite-backup.sh` and `test-encrypted-roundtrip.sh`) were added in integration commits `112ed67` and `0865b23`. They are absent from the older standalone acceptance-kit checkout until integration. Check script existence before execution. Physical signed-APK network tests remain blocked until a phone-trusted HTTPS endpoint exists.
+
 Gate A validates the software stack using local test suites, static analysis, isolated sandboxes, and secure operator SSH access to the host VPS. No public domain, DNS, or live certificates are required.
 
 > [!WARNING]

@@ -21,7 +21,7 @@ This checklist provides a rigid, end-to-end procedural manual to verify the Andr
    - Minimum 2 GB free internal storage.
    - Functional Wi-Fi and Mobile Data (Cellular) interfaces.
 2. **Server Availability:**
-   - Public HTTPS Backend active at `https://<domain>` (Gate B) **OR** local tunnel endpoint over HTTPS (`https://10.0.2.2:8787` / reverse proxy) (Gate A).
+   - A public HTTPS backend with a certificate trusted by the phone is required for the signed +5 APK's network checks. Alternatively, use an independently configured isolated HTTPS test proxy with a phone-trusted certificate. That alternative has not been prepared or verified here. Until one exists, signed-APK sign-in/sync checks are BLOCKED. `10.0.2.2` is an emulator host alias, not a physical-phone address or a TLS endpoint; the backend on port 8787 speaks plain HTTP.
    - Valid Collector Access Key provisioned on the server for Collector ID `C001` (Collector 1).
 3. **App Installation:**
    - Install `study-collector-1.0.0+5.apk` via ADB:

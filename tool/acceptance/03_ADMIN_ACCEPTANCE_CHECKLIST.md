@@ -1,6 +1,6 @@
 # Admin Web Portal Acceptance Checklist (Nutrition Study 1.0.0+5)
 
-**Target Artifact:** Separate Admin Web Application (`build/web_admin/` / `nutrition-study-admin-web-*.zip`)  
+**Target Artifact:** Separate Admin Web Application (`build/admin_web/` / `nutrition-study-admin-web-*.zip`)
 **Backend Service:** `tool/local_sync_server.dart` (Public Mode / HTTPS Reverse Proxy)  
 **Execution Environment:** Chromium / Firefox Browser on Secure Administrator Workstation  
 **Auditor:** Data Management Lead / Compliance Officer  
@@ -30,13 +30,24 @@ Acceptance testing of the Admin Web Portal MUST follow one of two valid test arr
 
 ### Option A: Isolated Local Test Harness (Recommended for Functional UI Testing)
 Used for functional acceptance testing of dashboard filtering, metrics calculation, and CSV export without requiring a live domain:
-- **Backend API Server:** Run an isolated local instance in non-public/private mode (`LOCAL_SYNC_PUBLIC_MODE=false` or unset) where cleartext HTTP and CORS `*` are permitted:
-  ```bash
-  dart tool/local_sync_server.dart --port=8787 --state-dir=/tmp/test-admin-state
+- **Backend API Server:** Open a dedicated PowerShell window at the repository root (the directory containing `tool/` and `pubspec.yaml`). Run an isolated local instance in non-public/private mode where cleartext HTTP and CORS `*` are permitted:
+  ```powershell
+  $acceptanceProject = (Get-Location).Path
+  $acceptanceState = Join-Path $env:TEMP ("nutrition-admin-test-" + [guid]::NewGuid())
+  New-Item -ItemType Directory -Path $acceptanceState | Out-Null
+  $env:LOCAL_SYNC_PUBLIC_MODE = "false"
+  $env:LOCAL_SYNC_ALLOWED_ORIGINS = "*"
+  $env:LOCAL_SYNC_ADMIN_KEY = "synthetic-admin-key-for-local-tests-only"
+  $env:LOCAL_SYNC_COLLECTOR_KEYS = "C001:synthetic-collector-key-for-local-tests-only"
+  Push-Location $acceptanceState
+  try { dart "$acceptanceProject/tool/local_sync_server.dart" --host=127.0.0.1 --port=8787 }
+  finally { Pop-Location }
   ```
-- **Admin Web Server:** Serve the admin web bundle locally using `tool/static_site_server.js`:
-  ```bash
-  node tool/static_site_server.js 8086 build/web_admin
+- The backend stores `.local_data` under its working directory; the fresh temporary directory isolates these synthetic records. Run this in a dedicated PowerShell window, not a production server shell. Close the window afterward to discard its test-only environment variables.
+- **Admin Web Server:** In a second PowerShell window at the project root, build a separate private-mode admin bundle (do not use the public-release bundle), then serve it:
+  ```powershell
+  ./tool/build_web_clients.ps1 -AdminOnly -AdminApiBaseUrl http://127.0.0.1:8787 -NoPub
+  node tool/static_site_server.js --port=8086 --root=build/admin_web --host=127.0.0.1
   ```
 - **Browser Access:** Navigate to `http://127.0.0.1:8086`. Functional UI tests (Sections 2–5) can proceed locally in this isolated sandbox.
 

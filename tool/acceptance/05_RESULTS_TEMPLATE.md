@@ -68,7 +68,7 @@
 | **HND-06** | Phone 1 local database preservation | 2 offline records remain safe; zero deletion | `[           ]` | SCR-19 |
 | **HND-07** | Phone 1 re-authentication / reclaim | Signs in again; receives fresh `Token_Gamma` | `[           ]` | LOG-08 |
 | **HND-08** | Preserved records uploaded successfully | Both offline visits uploaded; state becomes `synced` | `[           ]` | LOG-09 |
-| **HND-09** | 16-digit CSPRNG Study ID collision check | Phone 1 & Phone 2 Study IDs are collision-free | `[           ]` | LOG-10 |
+| **HND-09** | 16-digit CSPRNG Study ID collision check | No duplicate IDs in sampled phone records; server duplicate/conflict handling verified separately | `[           ]` | LOG-10 |
 
 ---
 
