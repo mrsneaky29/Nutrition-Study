@@ -8,19 +8,19 @@ The reference production target is a **DigitalOcean Basic Droplet** with 2 GiB R
 
 ## 1. Project Owner Provisioning Checklist
 
-Before running any deployment scripts, the project owner or administrator must purchase and configure the following infrastructure assets:
+Before running deployment scripts, identify the host and configure the required access and network settings:
 
 ### A. VPS Hardware & Operating System Specifications
 - **Provider**: DigitalOcean (or equivalent cloud VPS provider: Linode, Hetzner, AWS Lightsail).
 - **Plan**: Basic Droplet — Regular or Premium Intel/AMD.
-- **Specs**: **1 vCPU, 2 GiB RAM, 50 GiB NVMe SSD** (~$12/month).
+- **Specs**: **1 vCPU, 2 GiB RAM, 50 GiB Regular SSD**.
   - *Note*: 2 GiB RAM provides comfortable headroom for the Dart runtime (~80–150 MB RSS) and Caddy (~30 MB RSS), leaving ample page cache for JSON record reads and backups.
 - **Operating System**: **Ubuntu 24.04 LTS (Noble Numbat) x64**.
 - **Region**: **Bangalore, India (`blr1`)** for optimal latency to field collector devices.
 - **Authentication**: SSH Ed25519 key authentication only (disable root password authentication).
 
 ### B. Domain & DNS Records
-1. Purchase a domain (e.g. through Cloudflare, Namecheap, Porkbun, or Google Domains).
+1. Use a domain that you control.
 2. Choose your two subdomains:
    ```text
    API_HOST=api.<your-domain.org>
@@ -37,6 +37,8 @@ Before running any deployment scripts, the project owner or administrator must p
    dig +short api.<your-domain.org>
    dig +short admin.<your-domain.org>
    ```
+
+For the existing VM's domain activation sequence, see [DOMAIN_ACTIVATION_CHECKLIST.md](DOMAIN_ACTIVATION_CHECKLIST.md).
 
 ### C. Firewall Rules (UFW & Cloud Firewall)
 The VPS must strictly expose only SSH and public web traffic. The internal sync server port (`8787`) must **never** be accessible directly over the internet.
@@ -62,10 +64,7 @@ The VPS must strictly expose only SSH and public web traffic. The internal sync 
    ```
 
 ### D. Offsite Backup Storage Provisioning
-Because physical disk crashes or cloud droplet accidental termination will destroy local data, you must provision an independent storage target:
-- **DigitalOcean Block Storage Volume**: Attach a 10–20 GB block volume (e.g. mounted at `/mnt/backups`), formatted as ext4 with an entry in `/etc/fstab`.
-- **DigitalOcean Spaces (S3-compatible Object Storage)**: Provision a Spaces bucket (e.g. `study-backups-blr1`), and configure `s3cmd`, `rclone`, or `awscli` with restricted API tokens.
-- **External SFTP/rsync host**: A remote server or secure NAS in a separate physical location.
+The selected offsite route encrypts backups with the configured rclone `crypt` remote and stores them in private Google Drive. Follow [OFFSITE_BACKUP_SETUP.md](OFFSITE_BACKUP_SETUP.md) for configuration, recovery-key handling, and the current verification status. An attached block-storage volume is not the selected offsite copy.
 
 ---
 
@@ -259,20 +258,40 @@ Restoring plus5-vps service status...
 Service plus5-vps restarted successfully.
 ```
 
-### B. Offsite Replication
-To replicate backups to cloud object storage (e.g. DigitalOcean Spaces):
+### B. Encrypted Google Drive Offsite Backups
+
+The selected route uses the configured rclone `crypt` remote and private Google Drive. The `plus5-offsite-backup.service` runs `tool/vps/offsite-backup.sh`, which creates a local snapshot, uploads with additive `rclone copy`, and verifies with `rclone check --download`. It does not use `sync` or remove older remote backups. Follow [OFFSITE_BACKUP_SETUP.md](OFFSITE_BACKUP_SETUP.md) for remote setup, recovery-key handling, and verification status.
+
+The service reads `/etc/plus5-vps/offsite-backup.env`. It contains configuration paths and the configured encrypted destination, not credentials:
 
 ```bash
-# Using rclone, s3cmd, or aws-cli:
-rclone copy /mnt/backups/ spaces:study-backups-blr1/vps/
+RCLONE_CONFIG=/etc/rclone/rclone.conf
+RCLONE_DESTINATION=study-crypt:
 ```
+
+Keep the environment file root-owned with mode `0600`. Keep `/etc/rclone` root-only (directory mode `0700`, config mode `0600`); rclone may refresh its OAuth token there. Local staging copies are retained under `/var/lib/plus5-offsite-backups` and are not encrypted at rest; monitor local disk space and arrange retention before collecting participant data.
+
+After the synthetic encrypted upload and isolated restore checks pass, install the checked-in systemd units, configure the environment file, run the service once, and verify its result before enabling the timer:
+
+```bash
+sudo install -o root -g root -m 0644 tool/vps/systemd/plus5-offsite-backup.service /etc/systemd/system/
+sudo install -o root -g root -m 0644 tool/vps/systemd/plus5-offsite-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl start plus5-offsite-backup.service
+sudo systemctl show plus5-offsite-backup.service -p Result -p ExecMainStatus
+sudo journalctl -u plus5-offsite-backup.service --no-pager
+sudo systemctl enable --now plus5-offsite-backup.timer
+sudo systemctl list-timers plus5-offsite-backup.timer
+```
+
+The timer runs at 03:30 UTC with up to 15 minutes of randomized delay (09:00–09:15 IST). As of 2026-09-26, the deployed timer was enabled and active; its first timer-triggered run had not yet been observed. Verify the journal and new remote backup after that run. The current manual-unit and timer status is recorded in [OFFSITE_BACKUP_SETUP.md](OFFSITE_BACKUP_SETUP.md).
 
 ### C. Restoring State from Backup (`restore-state.sh`)
 
 The `tool/vps/restore-state.sh` utility safely restores records and state files:
 - **Boundary & Path Validation**: Validates that target is a dedicated directory (refusing root `/` or system paths `/var`, `/etc`, etc.), checks for directory traversal (`..`), unsafe symlinks, and forbids source/target path overlap.
 - **Isolated Staging Verification**: Extracts/copies backup into an isolated staging directory and verifies `SHA256SUMS` **before touching the target state directory**.
-- **External Pre-Restore Safety Snapshot**: If the target state contains existing records, archives them to a timestamped directory located **outside** the state directory being replaced (e.g. `/var/lib/plus5-vps/pre_restore_safety_backups/safety_backup_<timestamp>`) with a verified `SHA256SUMS` manifest.
+- **External Pre-Restore Safety Snapshot**: If the target state contains existing records, archives them to a timestamped directory located **outside** the state directory being replaced. With the default target `/var/lib/plus5-vps/state`, the path is `/var/lib/plus5-vps/pre_restore_safety_backups/safety_backup_<timestamp>_<pid>` and includes a verified `SHA256SUMS` manifest.
 - **Clean State Replacement (No Stale Files)**: Atomically swaps the verified staging directory into target state while the service is stopped, eliminating any stale, orphaned, or corrupted files from the previous state.
 - **Restores Ownership & Permissions**: Mode `0700` on state directory, mode `0600` on JSON state files, owner `plus5-vps:plus5-vps`.
 - **Automatic Rollback**: If any failure occurs during swap, verification, or service startup, automatically reverts to the pre-restore state and restarts the service.
@@ -289,7 +308,7 @@ Step 2: Staging backup and verifying cryptographic integrity...
 Staging integrity verified: all checksums matched.
 Step 3: Service plus5-vps is active. Stopping service...
 Step 4: Target state directory contains existing records.
-        Creating verified pre-restore safety snapshot in: /var/lib/plus5-vps/pre_restore_safety_backups/safety_backup_20260926_120500
+        Creating automatic rollback safety snapshot in: /var/lib/plus5-vps/pre_restore_safety_backups/safety_backup_20260926_120500_12345
 Safety snapshot created and verified.
 Step 5: Performing atomic state swap (clean replacement, no stale files)...
 Step 6: Setting state ownership (plus5-vps:plus5-vps) and permissions (0700/0600)...
@@ -304,7 +323,7 @@ Service plus5-vps restarted successfully.
 Restore Status:   SUCCESS
 Restored From:    /mnt/backups/backup_20260926_120000
 Restored To:      /var/lib/plus5-vps/state
-Safety Snapshot:  /var/lib/plus5-vps/pre_restore_safety_backups/safety_backup_20260926_120500
+Safety Snapshot:  /var/lib/plus5-vps/pre_restore_safety_backups/safety_backup_20260926_120500_12345
 Integrity Status: VERIFIED (PASS)
 ==================================================
 ```
@@ -326,7 +345,7 @@ sudo bash tool/vps/rollback.sh 20260920T100000Z-a1b2c3d4e5f6
 ### Database State Rollback
 If bad data was ingested or an incorrect restore occurred, roll back using the safety snapshot:
 ```bash
-sudo bash tool/vps/restore-state.sh /var/lib/plus5-vps/state/pre_restore_safety_backup_20260926_120500
+sudo bash tool/vps/restore-state.sh /var/lib/plus5-vps/pre_restore_safety_backups/safety_backup_20260926_120500_12345
 ```
 
 ---
@@ -339,11 +358,12 @@ sudo bash tool/vps/restore-state.sh /var/lib/plus5-vps/state/pre_restore_safety_
   sudo journalctl -u plus5-vps -f
   sudo journalctl -u caddy -f
   ```
-- **Automated Daily Backups (Cron Example)**:
-  Edit `/etc/cron.d/plus5-backups`:
-  ```cron
-  # Run daily at 02:00 AM UTC
-  0 2 * * * root /opt/plus5-vps/current/tool/vps/backup-state.sh /mnt/backups >> /var/log/plus5-backup.log 2>&1
+- **Offsite Backup Health**:
+  ```bash
+  sudo systemctl is-enabled plus5-offsite-backup.timer
+  sudo systemctl list-timers --all plus5-offsite-backup.timer
+  sudo systemctl show plus5-offsite-backup.service -p Result -p ExecMainStatus
+  sudo journalctl -u plus5-offsite-backup.service -n 20 --no-pager
   ```
 - **Security Updates**:
   Apply Ubuntu security updates regularly during scheduled maintenance windows:

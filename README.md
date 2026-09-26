@@ -32,9 +32,12 @@ pending. Public mode requires HTTPS, an exact allowed admin origin, distinct
 collector credentials and an admin key, each at least 32 characters. Never expose
 port 8787 directly or relax these checks for testing.
 
-Encrypted Google Drive backup and isolated synthetic restore checks have
-passed. The scheduled backup timer remains disabled pending physical recovery
-key retention and final activation checks. Keep signing keys, server
+Encrypted Google Drive backup and isolated restore checks have passed. The
+systemd backup unit completed a successful manual run and its journal confirmed
+remote verification. The recovery key is stored separately in an owner-only
+Drive folder and on the user's USB copy. The daily timer is enabled for 03:30
+UTC with up to 15 minutes of randomized delay (09:00–09:15 IST); its first
+scheduled execution has not yet been observed. Keep signing keys, server
 credentials, Drive recovery material, and participant records out of the
 repository and release archives. No Play Store publication is planned.
 

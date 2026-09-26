@@ -2,7 +2,7 @@
 Description=Daily +5 offsite state backup schedule (leave disabled until restore is verified)
 
 [Timer]
-OnCalendar=*-*-* 06:00:00
+OnCalendar=*-*-* 03:30:00 UTC
 RandomizedDelaySec=15m
 Persistent=true
 Unit=plus5-offsite-backup.service
