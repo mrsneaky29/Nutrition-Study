@@ -1,0 +1,24 @@
+[Unit]
+Description=+5 encrypted offsite state backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=/etc/plus5-vps/offsite-backup.env
+ExecStart=/opt/plus5-vps/current/tool/vps/offsite-backup.sh
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+StateDirectory=plus5-offsite-backups
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/plus5-vps/state /run/lock
+# rclone may refresh OAuth tokens here; keep this dedicated directory root-only
+# (directory mode 0700, config file mode 0600).
+ReadWritePaths=/etc/rclone
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true

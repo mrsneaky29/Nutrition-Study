@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily +5 offsite state backup schedule (leave disabled until restore is verified)
+
+[Timer]
+OnCalendar=*-*-* 06:00:00
+RandomizedDelaySec=15m
+Persistent=true
+Unit=plus5-offsite-backup.service
+
+[Install]
+WantedBy=timers.target

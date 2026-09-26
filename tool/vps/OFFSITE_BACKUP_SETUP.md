@@ -13,4 +13,4 @@ Destination: **Nutrition Study - Private Server Backups** (`15d5eERaJkkGFy96c_Mm
 
 ## Current status
 
-This is a setup proposal. The VM's production backend is inactive, no rclone OAuth has been completed on the VM, no synthetic offsite restore has been verified, and no backup timer is enabled. Therefore, no automatic or offsite backups are operational yet.
+The backend is running on VM loopback only and enabled at boot. The backup wrapper and systemd units are installed; fake-rclone integration tests passed on Ubuntu, including missing configuration, inaccessible destination, verified copying, and retained backups after verification failure. The timer remains disabled. No rclone OAuth has been completed on the VM and no real offsite upload or restore has been verified. Therefore, no automatic or offsite backups are operational yet.
