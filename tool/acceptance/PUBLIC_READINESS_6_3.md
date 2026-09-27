@@ -8,7 +8,8 @@ Collector phone APK remains +6, unchanged.
 
 - Production build and static analysis passed. 95 focused admin/sync/Study-ID
   tests passed. Additional store/restore suites returned 64 passed, one skipped;
-  the skipped test is not counted as verified.
+  rerunning the public-session restoration test with both required public-release
+  build flags then passed (one test). Total across these runs: 160 passed tests.
 - Isolated browser acceptance covered login, permissions, search/filter/details,
   measurements, edits, archive/restore, CSV, QR administration, mobile scrolling,
   restart persistence, outage recovery, malformed-row isolation and logout.
