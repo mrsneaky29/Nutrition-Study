@@ -3,7 +3,19 @@
 For all preserved versions, historical root READMEs, and complete component
 READMEs, see [the version history and README archive](CHANGELOG.md).
 
-## Admin console +6.2
+## Admin console +6.3
+
+The console has an explicit **Sign out** button on desktop and mobile. It closes
+this browser's API client, removes the dashboard, and returns to blank key entry.
+It does not rotate/revoke the shared administrator key or log out other browsers.
+Automatic timed expiry is not implemented; sign out after use on a shared device.
+
+Malformed server records no longer prevent valid records from loading or expose
+raw participant validation errors. A warning states how many records could not
+be displayed; they remain saved on the server. Counts are for valid records only.
+Editing, archiving, and CSV export pause until repair and a successful refresh.
+No malformed record is silently discarded or included in a misleading partial
+export. See [the +6.3 verification report](tool/acceptance/ADMIN_6_3_REPORT.md).
 
 The +6.2 checkpoint fixes browser rounding of long Study ID suffixes in record
 lists, detail views, searches, and CSV exports. The digits are normalized with
@@ -26,10 +38,11 @@ This update changes the admin console and supporting backend only. The installed
 collector app remains +6, using its existing QR format. Its future source display
 name is +6.1; no new phone APK has been built or installed for this update.
 
-Current focused verification passed 91 automated tests and static analysis.
+Current focused verification passed 95 automated tests and static analysis.
 Browser checks covered records, edits, reversible archive, CSV, collector
 creation/QR/reset/disable, mobile layouts, and outage recovery in isolation.
-Two-phone takeover and final production acceptance are separate checks.
+Two-phone takeover support remains, but the user has waived its test as a
+rollout requirement. The phone remains on +6 and has not been replaced.
 
 Nutrition Study 1.0.0+6 adds mandatory QR sign-in for production collector
 builds. The project has two separate clients: the Android collector app

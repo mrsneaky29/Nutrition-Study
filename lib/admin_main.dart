@@ -44,11 +44,19 @@ class _AdminEntryAppState extends State<_AdminEntryApp> {
     final repository = LocalApiVisitRepository(apiKey: key);
     try {
       await repository.listVisibleTo(_admin);
-      if (!mounted) return;
+      if (!mounted) {
+        repository.close();
+        return;
+      }
       _keyController.clear();
       setState(() => _repository = repository);
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      repository.close();
+      if (mounted) {
+        setState(
+          () => _error = error is LocalApiException ? error.message : 'The server returned data this console cannot safely open. Contact the study administrator.',
+        );
+      }
     } finally {
       if (mounted) setState(() => _connecting = false);
     }
@@ -62,6 +70,14 @@ class _AdminEntryAppState extends State<_AdminEntryApp> {
         repository: repository,
         admin: _admin,
         collectorGateway: repository,
+        onSignOut: () {
+          repository.close();
+          _keyController.clear();
+          setState(() {
+            _repository = null;
+            _error = null;
+          });
+        },
       );
     }
     return MaterialApp(
@@ -82,6 +98,8 @@ class _AdminEntryAppState extends State<_AdminEntryApp> {
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 12),
+                  const Text('Admin console +6.3'),
+                  const SizedBox(height: 8),
                   const Text(
                     'Enter the administrator key for the study server.',
                   ),

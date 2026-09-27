@@ -35,6 +35,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Object? _connectionError;
   DateTime? _lastSuccessfulLoad;
   bool _isRefreshing = false;
+  int _malformedRecordCount = 0;
   Timer? _poller;
   String _query = '';
   _RecordFilter _filter = _RecordFilter.all;
@@ -87,17 +88,22 @@ class _AdminDashboardState extends State<AdminDashboard> {
     _isRefreshing = true;
     try {
       final records = await _loadRecords();
+      final malformedCount = widget.repository is LocalApiVisitRepository
+          ? (widget.repository as LocalApiVisitRepository).malformedRecordCount
+          : 0;
       final conflicts = await _loadServerConflicts();
       if (!mounted) return;
       final signature = _signatureFor(records);
       _lastSuccessfulLoad = DateTime.now();
       if (_recordsSignature != signature ||
+          _malformedRecordCount != malformedCount ||
           _initialLoadError != null ||
           _connectionError != null ||
           _serverConflicts.length != conflicts.length ||
           _serverConflicts.toString() != conflicts.toString()) {
         setState(() {
           _records = records;
+          _malformedRecordCount = malformedCount;
           _recordsSignature = signature;
           _serverConflicts = conflicts;
           _initialLoadError = null;
@@ -193,30 +199,53 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     message: _initialLoadError.toString(),
                     onRetry: _refresh,
                   )
-          : _DashboardContent(
-              records: records,
-              serverConflicts: _serverConflicts,
-              connectionError: _connectionError,
-              lastSuccessfulLoad: _lastSuccessfulLoad,
-              query: _query,
-              filter: _filter,
-              onQueryChanged: (value) => setState(() => _query = value.trim()),
-              onFilterChanged: (value) => setState(() => _filter = value),
-              onRefresh: _refresh,
-              onReviewConflict: _reviewConflict,
-              onResolveConflict: _resolveConflict,
-              onArchivePolicy: () => _showArchivePolicy(context),
-              onRecordSelected: (record) => _showRecord(
-                context,
-                record,
-                readOnly: _connectionError != null,
-              ),
-              onExport: _connectionError == null
-                  ? () => _copyCsv(
+          : Column(
+              children: [
+                if (_malformedRecordCount > 0)
+                  MaterialBanner(
+                    content: Text(
+                      '$_malformedRecordCount malformed server records could not be displayed. '
+                      'They remain saved on the server. Counts below cover valid records only. '
+                      'Editing, archiving and export are paused until the records are repaired.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: _refresh,
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                Expanded(
+                  child: _DashboardContent(
+                    records: records,
+                    serverConflicts: _serverConflicts,
+                    connectionError: _connectionError,
+                    lastSuccessfulLoad: _lastSuccessfulLoad,
+                    query: _query,
+                    filter: _filter,
+                    onQueryChanged: (value) =>
+                        setState(() => _query = value.trim()),
+                    onFilterChanged: (value) => setState(() => _filter = value),
+                    onRefresh: _refresh,
+                    onReviewConflict: _reviewConflict,
+                    onResolveConflict: _resolveConflict,
+                    onArchivePolicy: () => _showArchivePolicy(context),
+                    onRecordSelected: (record) => _showRecord(
                       context,
-                      _recordsForView(records, _query, _filter),
-                    )
-                  : null,
+                      record,
+                      readOnly:
+                          _connectionError != null || _malformedRecordCount > 0,
+                    ),
+                    onExport:
+                        _connectionError == null && _malformedRecordCount == 0
+                        ? () => _copyCsv(
+                            context,
+                            _recordsForView(records, _query, _filter),
+                          )
+                        : null,
+                  ),
+                ),
+              ],
             ),
     );
   }
@@ -1765,7 +1794,7 @@ class _RecordDetailsState extends State<_RecordDetails> {
                   const SizedBox(height: 12),
                   if (readOnly)
                     const Text(
-                      'This is the last loaded view. Reconnect to the home server before making changes.',
+                      'This view is read-only. Resolve the server warning on the records page before making changes.',
                       style: TextStyle(color: Color(0xFF795500), fontSize: 13),
                     ),
                   const Text(

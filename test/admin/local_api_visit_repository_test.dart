@@ -11,6 +11,30 @@ import 'package:project2/domain/visit_record.dart';
 void main() {
   const admin = AuthenticatedUser(id: 'admin.test', role: UserRole.admin);
 
+  test(
+    'mixed malformed records keep valid data and recover on next refresh',
+    () async {
+      var malformed = true;
+      final repository = LocalApiVisitRepository(
+        apiKey: 'synthetic-admin',
+        client: MockClient((_) async {
+          final invalid = _recordJson();
+          (invalid['participant'] as Map)['indianPhone'] =
+              'private-invalid-value';
+          return http.Response(
+            jsonEncode([_recordJson(), if (malformed) invalid]),
+            200,
+          );
+        }),
+      );
+      expect(await repository.listVisibleTo(admin), hasLength(1));
+      expect(repository.malformedRecordCount, 1);
+      malformed = false;
+      expect(await repository.listVisibleTo(admin), hasLength(1));
+      expect(repository.malformedRecordCount, 0);
+    },
+  );
+
   test('admin parser preserves exact long server Study IDs', () async {
     final json = _recordJson();
     (json['participant'] as Map)['studyId'] = 'C01-9283019284710293';
@@ -409,25 +433,26 @@ void main() {
       },
     );
 
-    test('throws LocalApiException on invalid participant study ID', () async {
-      final repository = LocalApiVisitRepository(
-        apiKey: 'admin-test-key-123',
-        client: MockClient((_) async {
-          final invalidRecord = _recordJson()
-            ..['participant'] = {
-              'studyId': 'INVALID_ID_999',
-              'name': 'Bad ID Participant',
-              'indianPhone': '+919000000001',
-            };
-          return http.Response(jsonEncode([invalidRecord]), 200);
-        }),
-      );
+    test(
+      'retains malformed server records without exposing their contents',
+      () async {
+        final repository = LocalApiVisitRepository(
+          apiKey: 'admin-test-key-123',
+          client: MockClient((_) async {
+            final invalidRecord = _recordJson()
+              ..['participant'] = {
+                'studyId': 'INVALID_ID_999',
+                'name': 'Bad ID Participant',
+                'indianPhone': '+919000000001',
+              };
+            return http.Response(jsonEncode([invalidRecord]), 200);
+          }),
+        );
 
-      expect(
-        () => repository.listVisibleTo(admin),
-        throwsA(isA<LocalApiException>()),
-      );
-    });
+        expect(await repository.listVisibleTo(admin), isEmpty);
+        expect(repository.malformedRecordCount, 1);
+      },
+    );
   });
 }
 

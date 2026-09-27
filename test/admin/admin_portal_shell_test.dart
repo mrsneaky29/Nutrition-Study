@@ -9,6 +9,31 @@ import 'package:project2/domain/authenticated_user.dart';
 void main() {
   const admin = AuthenticatedUser(id: 'admin.test', role: UserRole.admin);
 
+  for (final width in [390.0, 1200.0]) {
+    testWidgets('sign out is available at width $width', (tester) async {
+      tester.view.physicalSize = Size(width, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      var signedOut = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AdminPortalShell(
+            repository: createAdminDemoRepository(),
+            admin: admin,
+            sessionGateway: const InMemoryAdminSessionGateway(admin),
+            collectorGateway: InMemoryCollectorAccountGateway(),
+            onSignOut: () => signedOut = true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Sign out'));
+      expect(signedOut, isTrue);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   testWidgets('wide admin portal opens collector access from the top bar', (
     tester,
   ) async {

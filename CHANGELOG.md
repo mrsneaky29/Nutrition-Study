@@ -6,6 +6,12 @@ For current operating instructions, start with [README.md](README.md).
 
 ## Important version distinctions
 
+- **+6.3 is the admin-console logout and safe malformed-record update.** Valid
+  records stay visible with an explicit malformed-record count. Edits, archive,
+  and export pause until repair; raw validation values are not exposed. Sign out
+  closes the local client and returns to key entry. The phone remains +6.
+  +6.2 source checkpoint: `eceb1d3c1ec739308b8756192b34f80dc696b03c`.
+
 - **+6.2 is an admin-console verification/fix checkpoint.** It fixes long Study
   ID rounding in browser normalization, adds exact-digit regression tests, and
   records browser acceptance results. It is not a new installed phone APK.

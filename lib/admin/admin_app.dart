@@ -19,6 +19,7 @@ class AdminPortalApp extends StatelessWidget {
     required this.admin,
     AdminSessionGateway? sessionGateway,
     CollectorAccountGateway? collectorGateway,
+    this.onSignOut,
     super.key,
   }) : assert(admin.role == UserRole.admin),
        sessionGateway = sessionGateway ?? InMemoryAdminSessionGateway(admin),
@@ -28,6 +29,7 @@ class AdminPortalApp extends StatelessWidget {
   final AuthenticatedUser admin;
   final AdminSessionGateway sessionGateway;
   final CollectorAccountGateway collectorGateway;
+  final VoidCallback? onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -82,6 +84,7 @@ class AdminPortalApp extends StatelessWidget {
               admin: admin,
               sessionGateway: sessionGateway,
               collectorGateway: collectorGateway,
+              onSignOut: onSignOut,
             )
           : const _WebOnlyNotice(),
     );
@@ -97,6 +100,7 @@ class AdminPortalShell extends StatefulWidget {
     required this.admin,
     required this.sessionGateway,
     required this.collectorGateway,
+    this.onSignOut,
     super.key,
   });
 
@@ -104,6 +108,7 @@ class AdminPortalShell extends StatefulWidget {
   final AuthenticatedUser admin;
   final AdminSessionGateway sessionGateway;
   final CollectorAccountGateway collectorGateway;
+  final VoidCallback? onSignOut;
 
   @override
   State<AdminPortalShell> createState() => _AdminPortalShellState();
@@ -118,32 +123,44 @@ class _AdminPortalShellState extends State<AdminPortalShell> {
       final compact = constraints.maxWidth < 700;
       return Scaffold(
         appBar: AppBar(
-          title: const Text('Study Admin'),
-          actions: compact
-              ? null
-              : [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 16),
-                    child: SegmentedButton<int>(
-                      segments: const [
-                        ButtonSegment(
-                          value: 0,
-                          icon: Icon(Icons.assignment_outlined),
-                          label: Text('Visit records'),
-                        ),
-                        ButtonSegment(
-                          value: 1,
-                          icon: Icon(Icons.badge_outlined),
-                          label: Text('Collector access'),
-                        ),
-                      ],
-                      selected: {_section},
-                      onSelectionChanged: (value) {
-                        setState(() => _section = value.single);
-                      },
+          title: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Study Admin'),
+              SizedBox(width: 8),
+              Text('+6.3', style: TextStyle(fontSize: 12)),
+            ],
+          ),
+          actions: [
+            if (!compact)
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: SegmentedButton<int>(
+                  segments: const [
+                    ButtonSegment(
+                      value: 0,
+                      icon: Icon(Icons.assignment_outlined),
+                      label: Text('Visit records'),
                     ),
-                  ),
-                ],
+                    ButtonSegment(
+                      value: 1,
+                      icon: Icon(Icons.badge_outlined),
+                      label: Text('Collector access'),
+                    ),
+                  ],
+                  selected: {_section},
+                  onSelectionChanged: (value) {
+                    setState(() => _section = value.single);
+                  },
+                ),
+              ),
+            if (widget.onSignOut != null)
+              IconButton(
+                tooltip: 'Sign out',
+                onPressed: widget.onSignOut,
+                icon: const Icon(Icons.logout),
+              ),
+          ],
         ),
         body: IndexedStack(
           index: _section,

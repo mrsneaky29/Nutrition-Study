@@ -47,6 +47,9 @@ class LocalApiVisitRepository
   final Uri _baseUri;
   final http.Client _client;
   final String apiKey;
+  int malformedRecordCount = 0;
+
+  void close() => _client.close();
 
   Uri _uri(String path) => _baseUri.resolve(path);
 
@@ -132,15 +135,29 @@ class LocalApiVisitRepository
     final decoded = _decode(response);
     final records = decoded is List
         ? decoded
-        : _map(decoded)['records'] ?? _map(decoded)['data'] ?? const [];
+        : _map(decoded)['records'] ?? _map(decoded)['data'];
     if (records is! List) {
       throw const LocalApiException(
         'The local service returned an invalid records response.',
       );
     }
-    return List.unmodifiable(
-      records.map((value) => _recordFromJson(_map(value))).toList(),
-    );
+    final valid = <VisitRecord>[];
+    var malformed = 0;
+    for (final value in records) {
+      try {
+        valid.add(_recordFromJson(_map(value)));
+      } on Exception {
+        malformed++;
+      } on ArgumentError {
+        malformed++;
+      } on TypeError {
+        malformed++;
+      } on StateError {
+        malformed++;
+      }
+    }
+    malformedRecordCount = malformed;
+    return List.unmodifiable(valid);
   }
 
   @override
@@ -345,6 +362,16 @@ class LocalApiVisitRepository
   }
 
   static VisitRecord _recordFromJson(Map<String, Object?> json) {
+    try {
+      return _parseRecordFromJson(json);
+    } catch (_) {
+      throw const LocalApiException(
+        'The server returned a malformed record. Saved data has not been discarded.',
+      );
+    }
+  }
+
+  static VisitRecord _parseRecordFromJson(Map<String, Object?> json) {
     final participantJson = _map(json['participant']);
     final studyId = _string(participantJson, 'studyId');
     final participant = ParticipantProfile(
