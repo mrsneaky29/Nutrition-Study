@@ -269,7 +269,7 @@ RCLONE_CONFIG=/etc/rclone/rclone.conf
 RCLONE_DESTINATION=study-crypt:
 ```
 
-Keep the environment file root-owned with mode `0600`. Keep `/etc/rclone` root-only (directory mode `0700`, config mode `0600`); rclone may refresh its OAuth token there. Local staging copies are retained under `/var/lib/plus5-offsite-backups` and are not encrypted at rest; monitor local disk space and arrange retention before collecting participant data.
+Keep the environment file root-owned with mode `0600`. Keep `/etc/rclone` root-only (directory mode `0700`, config mode `0600`); rclone may refresh its OAuth token there. Local staging copies are retained under `/var/lib/plus5-offsite-backups` and are not encrypted at rest. The owner selected indefinite retention for local and encrypted offsite backups on 2026-09-27. Monitor storage and expand capacity when needed; no automatic deletion is permitted. See `OFFSITE_BACKUP_SETUP.md`.
 
 After the synthetic encrypted upload and isolated restore checks pass, install the checked-in systemd units, configure the environment file, run the service once, and verify its result before enabling the timer:
 

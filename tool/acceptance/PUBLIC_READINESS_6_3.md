@@ -45,8 +45,10 @@ is local, not shared-key revocation, and no automatic session expiry exists.
 Unreadable records stay on the server for controlled repair; partial exports and
 edits are paused. Two-phone takeover verification was waived, not passed.
 
-The study owner must approve participant consent/privacy procedures, authorized
-staff, and a local/offsite backup retention schedule. Retained plaintext staging
-needs disk monitoring and controlled cleanup; do not indiscriminately purge
-recovery copies. An independent recovery drill using the saved recovery key is
+The study owner handles participant consent/privacy approval outside the app.
+On 2026-09-27 the owner selected indefinite local/offsite backup retention;
+automatic deletion remains disabled. Retained plaintext staging needs disk
+monitoring and capacity expansion if necessary, not automatic cleanup. Do not
+purge recovery copies without a new explicit instruction. Authorized staff still
+need to keep credentials private. An independent recovery drill using the saved recovery key is
 recommended before depending on backups for real participant data.

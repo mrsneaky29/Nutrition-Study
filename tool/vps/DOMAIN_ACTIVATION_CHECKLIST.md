@@ -44,8 +44,8 @@ before marking those tests complete.
    layout and outage/loading behaviour. Record failures, not just screenshots.
 10. Recheck backup success after release activation. Confirm the first scheduled
     backup when it runs; keep the recovery key separate and test restores only
-    against isolated synthetic state. Agree on local and remote retention before
-    real survey collection, without deleting existing backups implicitly.
+    against isolated synthetic state. The owner selected indefinite local and
+    remote retention on 2026-09-27. Monitor capacity; do not delete backups.
 
 ## Go-live boundary
 

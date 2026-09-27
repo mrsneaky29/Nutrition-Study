@@ -106,7 +106,9 @@ replacing it.
 
 Encrypted backup completed a successful manual run after activation, with
 remote verification. The scheduled timer's first run has not been observed and
-backup retention policy is undecided. Signing keys, server credentials, Drive
+the owner selected indefinite local/offsite backup retention on 2026-09-27.
+No automatic deletion is enabled; monitor storage and expand capacity as needed.
+Signing keys, server credentials, Drive
 recovery material, and participant records must stay out of the repository and
 release archives. No Play Store publication is planned.
 
@@ -157,7 +159,7 @@ generation, exact CORS-origin configuration, Caddy setup, release import,
 activation, and health checks. Configure the admin origin without a trailing
 slash. The backend must remain bound to loopback, with Caddy as its public TLS
 reverse proxy. Full physical and admin acceptance, observation of a scheduled
-backup, and a decided retention policy remain release readiness work before
+backup remain release readiness work before
 any live use.
 
 ## Acceptance checks

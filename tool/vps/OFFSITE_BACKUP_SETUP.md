@@ -36,5 +36,14 @@ the VM must be running for any backup to execute.
 Local staging copies are retained under `/var/lib/plus5-offsite-backups` with
 root-only permissions. They are not encrypted by rclone at rest on the VM;
 encryption applies to the uploaded Drive objects. Monitor local disk space and
-plan retention before collecting real participant data. No automatic deletion
-or retention policy is enabled yet.
+monitor storage capacity as backups grow.
+
+## Retention policy — approved 2026-09-27
+
+The study owner requested indefinite retention of all backups, both local
+staging copies and encrypted offsite copies. No expiration or automatic deletion
+is enabled. Continue additive `rclone copy` uploads; do not introduce `sync`,
+`purge`, rotation or age-based cleanup without a new explicit owner instruction.
+If storage becomes constrained, report it and arrange more capacity; do not
+silently delete backups. Local staging remains plaintext with root-only access.
+Privacy/consent approval is handled outside the app by the study owner.
