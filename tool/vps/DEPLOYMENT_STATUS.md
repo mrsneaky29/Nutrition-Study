@@ -1,5 +1,8 @@
 # +5 deployment verification — 2026-09-26
 
+Historical checkpoint only. Current +6.3 deployment and operational boundaries
+are recorded in `../acceptance/PUBLIC_READINESS_6_3.md`.
+
 ## Active deployment
 
 - Admin: https://admin.nutrition.achantalabs.com

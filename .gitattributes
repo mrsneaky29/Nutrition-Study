@@ -1,0 +1,2 @@
+# VPS executables must stay runnable after a Windows checkout.
+*.sh text eol=lf
