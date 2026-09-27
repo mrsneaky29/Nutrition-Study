@@ -62,7 +62,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Study Collector',
+      title: 'Vivayu',
       theme: PresentationTheme.materialTheme(),
       home: LocalDemoApp(
         syncGateway: syncGateway,

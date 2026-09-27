@@ -11,7 +11,7 @@ enum QrScanFailureReason {
   /// User cancelled or closed the camera scanner view.
   cancelled,
 
-  /// The scanned code is not a valid Study Collector setup code.
+  /// The scanned code is not a valid Vivayu setup code.
   invalidQr,
 
   /// Camera hardware or sensor could not be accessed.
@@ -52,7 +52,7 @@ class QrScannerPermissionDenied extends QrScannerResult {
 class QrScannerInvalid extends QrScannerResult {
   const QrScannerInvalid({
     required this.reason,
-    this.message = 'The scanned QR code is not a valid Study Collector setup code.',
+    this.message = 'The scanned QR code is not a valid Vivayu setup code.',
   });
 
   final String reason;

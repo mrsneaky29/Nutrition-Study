@@ -6,7 +6,8 @@
         android:allowBackup="false"
         android:label="${studyAppLabel}"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/vivayu_launcher"
+        android:roundIcon="@mipmap/vivayu_launcher">
         <activity
             android:name="org.nutritionstudy.project2.MainActivity"
             android:exported="true"

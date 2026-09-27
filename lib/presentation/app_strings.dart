@@ -1,6 +1,6 @@
 /// English copy kept in one place so it can later be replaced by localization.
 abstract final class AppStrings {
-  static const appName = 'Study Collector';
+  static const appName = 'Vivayu';
   static const continueLabel = 'Continue';
   static const signOut = 'Sign out';
   static const studyId = 'Study ID';

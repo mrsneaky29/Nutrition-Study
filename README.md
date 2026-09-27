@@ -1,4 +1,13 @@
-# Nutrition Study
+# Vivayu
+
+Vivayu is the project name for this nutrition-study collector app and admin
+console. Existing package identifiers, deployment domains and historical release
+names are preserved for compatibility.
+
+The visible app/console name is exactly `Vivayu`, without a version suffix.
+The renamed collector distribution uses internal version `1.0.0+7` so it can
+update an older signed build. Existing installed phone apps are not changed
+until the user installs the new package.
 
 For all preserved versions, historical root READMEs, and complete component
 READMEs, see [the version history and README archive](CHANGELOG.md).

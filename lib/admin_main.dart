@@ -82,7 +82,7 @@ class _AdminEntryAppState extends State<_AdminEntryApp> {
     }
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Study Admin',
+      title: 'Vivayu',
       home: Scaffold(
         body: Center(
           child: ConstrainedBox(
@@ -94,11 +94,11 @@ class _AdminEntryAppState extends State<_AdminEntryApp> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Text(
-                    'Study Admin',
+                    'Vivayu',
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 12),
-                  const Text('Admin console +6.3'),
+                  const Text('Administrator sign in'),
                   const SizedBox(height: 8),
                   const Text(
                     'Enter the administrator key for the study server.',

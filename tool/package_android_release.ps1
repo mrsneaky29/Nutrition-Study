@@ -53,7 +53,7 @@ if ($hasUrl) {
 }
 
 $distributionDirectory = Join-Path $distributionRoot 'shared'
-$artifactBase = "study-collector-$BuildName+$BuildNumber"
+$artifactBase = "vivayu-$BuildName+$BuildNumber"
 $apkDestination = Join-Path $distributionDirectory "$artifactBase.apk"
 $bundleDestination = Join-Path $distributionDirectory "$artifactBase.aab"
 $checksumDestination = Join-Path $distributionDirectory "$artifactBase.sha256"
@@ -63,8 +63,8 @@ foreach ($destination in @($apkDestination, $bundleDestination, $checksumDestina
   }
 }
 if (Test-Path -LiteralPath $distributionDirectory) {
-  foreach ($existing in @(Get-ChildItem -LiteralPath $distributionDirectory -Filter 'study-collector-*.apk' -File)) {
-    if ($existing.Name -match '^study-collector-[0-9]+\.[0-9]+\.[0-9]+\+([0-9]+)\.apk$' -and
+  foreach ($existing in @(Get-ChildItem -LiteralPath $distributionDirectory -Filter '*.apk' -File)) {
+    if ($existing.Name -match '^(?:study-collector|vivayu)-[0-9]+\.[0-9]+\.[0-9]+\+([0-9]+)\.apk$' -and
         [int]$Matches[1] -ge $BuildNumber) {
       throw "BuildNumber must exceed the previous release in $distributionDirectory ($($existing.Name))."
     }

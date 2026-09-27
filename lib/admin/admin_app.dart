@@ -43,7 +43,7 @@ class AdminPortalApp extends StatelessWidget {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Study Admin',
+      title: 'Vivayu',
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: scheme,
@@ -123,14 +123,7 @@ class _AdminPortalShellState extends State<AdminPortalShell> {
       final compact = constraints.maxWidth < 700;
       return Scaffold(
         appBar: AppBar(
-          title: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Study Admin'),
-              SizedBox(width: 8),
-              Text('+6.3', style: TextStyle(fontSize: 12)),
-            ],
-          ),
+          title: const Text('Vivayu'),
           actions: [
             if (!compact)
               Padding(

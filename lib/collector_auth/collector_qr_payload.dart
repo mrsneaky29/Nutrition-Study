@@ -26,7 +26,7 @@ class QrInvalidTypeException extends QrPayloadException {
   const QrInvalidTypeException(String foundType)
     : super(
         'Unrecognized QR payload type "$foundType". '
-        'This is not a valid Nutrition Study setup code.',
+        'This is not a valid Vivayu setup code.',
       );
 }
 

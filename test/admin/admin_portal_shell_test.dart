@@ -28,6 +28,11 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: find.byType(AppBar), matching: find.text('Vivayu')),
+        findsOneWidget,
+      );
+      expect(find.text('+6.3'), findsNothing);
       await tester.tap(find.byTooltip('Sign out'));
       expect(signedOut, isTrue);
       await tester.pumpWidget(const SizedBox.shrink());

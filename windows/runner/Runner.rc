@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "org.nutritionstudy" "\0"
-            VALUE "FileDescription", "project2" "\0"
+            VALUE "FileDescription", "Vivayu" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "project2" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 org.nutritionstudy. All rights reserved." "\0"
             VALUE "OriginalFilename", "project2.exe" "\0"
-            VALUE "ProductName", "project2" "\0"
+            VALUE "ProductName", "Vivayu" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

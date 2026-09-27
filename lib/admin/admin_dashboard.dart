@@ -664,7 +664,7 @@ class _TopBar extends StatelessWidget {
       const SizedBox(width: 10),
       const Expanded(
         child: Text(
-          'Study Admin',
+          'Vivayu',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
         ),
       ),
