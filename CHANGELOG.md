@@ -6,6 +6,10 @@ For current operating instructions, start with [README.md](README.md).
 
 ## Important version distinctions
 
+- **+6.2 is an admin-console verification/fix checkpoint.** It fixes long Study
+  ID rounding in browser normalization, adds exact-digit regression tests, and
+  records browser acceptance results. It is not a new installed phone APK.
+
 - `+1` through `+6` are Android build/release labels used by this project.
   Earlier packages could override the build number during packaging, so a
   historical `pubspec.yaml` alone does not identify the distributed APK.

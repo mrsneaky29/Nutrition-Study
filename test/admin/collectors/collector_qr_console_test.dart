@@ -23,8 +23,9 @@ void main() {
           expect(request.headers['x-local-sync-key'], 'test-admin-key');
           if (request.url.path.endsWith('/qr')) {
             qrRequests++;
-            if (scenario == 'error')
+            if (scenario == 'error') {
               return http.Response('sensitive-error-$secret', 403);
+            }
             return http.Response(
               CollectorQrPayload.generateJson(
                 collectorNumber: 1,

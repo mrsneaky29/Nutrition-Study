@@ -11,6 +11,17 @@ import 'package:project2/domain/visit_record.dart';
 void main() {
   const admin = AuthenticatedUser(id: 'admin.test', role: UserRole.admin);
 
+  test('admin parser preserves exact long server Study IDs', () async {
+    final json = _recordJson();
+    (json['participant'] as Map)['studyId'] = 'C01-9283019284710293';
+    final repository = LocalApiVisitRepository(
+      apiKey: 'synthetic-admin',
+      client: MockClient((_) async => http.Response(jsonEncode([json]), 200)),
+    );
+    final records = await repository.listVisibleTo(admin);
+    expect(records.single.participant.studyId, 'C01-9283019284710293');
+  });
+
   test('loads the direct /records response shape from the local API', () async {
     final repository = LocalApiVisitRepository(
       apiKey: 'admin-test-key-123',
@@ -151,28 +162,25 @@ void main() {
     },
   );
 
-  test(
-    'decodes records with safe null defaults for missing syncState and reviewState',
-    () async {
-      final repository = LocalApiVisitRepository(
-        apiKey: 'admin-test-key-123',
-        client: MockClient((request) async {
-          final minimalRecord = _recordJson()
-            ..remove('syncState')
-            ..remove('reviewState')
-            ..['stepTwoPlaceholderNote'] = '';
-          return http.Response(jsonEncode([minimalRecord]), 200);
-        }),
-      );
+  test('decodes records with safe null defaults for missing syncState and reviewState', () async {
+    final repository = LocalApiVisitRepository(
+      apiKey: 'admin-test-key-123',
+      client: MockClient((request) async {
+        final minimalRecord = _recordJson()
+          ..remove('syncState')
+          ..remove('reviewState')
+          ..['stepTwoPlaceholderNote'] = '';
+        return http.Response(jsonEncode([minimalRecord]), 200);
+      }),
+    );
 
-      final records = await repository.listVisibleTo(admin);
-      expect(records, hasLength(1));
-      final record = records.single;
-      expect(record.syncState, SyncState.synced);
-      expect(record.reviewState, NeutralReviewState.pending);
-      expect(record.stepTwoPlaceholderNote, isNull);
-    },
-  );
+    final records = await repository.listVisibleTo(admin);
+    expect(records, hasLength(1));
+    final record = records.single;
+    expect(record.syncState, SyncState.synced);
+    expect(record.reviewState, NeutralReviewState.pending);
+    expect(record.stepTwoPlaceholderNote, isNull);
+  });
 
   group('Server conflict inbox API', () {
     test('listConflicts sends GET /conflicts and decodes items', () async {
@@ -224,20 +232,26 @@ void main() {
       );
     });
 
-    test('listConflicts includes status query parameter when provided', () async {
-      final repository = LocalApiVisitRepository(
-        apiKey: 'admin-test-key-123',
-        baseUrl: 'http://127.0.0.1:8787',
-        client: MockClient((request) async {
-          expect(request.method, 'GET');
-          expect(request.url.toString(), 'http://127.0.0.1:8787/conflicts?status=pending');
-          return http.Response(jsonEncode([]), 200);
-        }),
-      );
+    test(
+      'listConflicts includes status query parameter when provided',
+      () async {
+        final repository = LocalApiVisitRepository(
+          apiKey: 'admin-test-key-123',
+          baseUrl: 'http://127.0.0.1:8787',
+          client: MockClient((request) async {
+            expect(request.method, 'GET');
+            expect(
+              request.url.toString(),
+              'http://127.0.0.1:8787/conflicts?status=pending',
+            );
+            return http.Response(jsonEncode([]), 200);
+          }),
+        );
 
-      final conflicts = await repository.listConflicts(status: 'pending');
-      expect(conflicts, isEmpty);
-    });
+        final conflicts = await repository.listConflicts(status: 'pending');
+        expect(conflicts, isEmpty);
+      },
+    );
 
     test('getConflict returns conflict when found and null on 404', () async {
       final repository = LocalApiVisitRepository(
@@ -246,10 +260,7 @@ void main() {
         client: MockClient((request) async {
           if (request.url.path == '/conflicts/conflict-1') {
             return http.Response(
-              jsonEncode({
-                'id': 'conflict-1',
-                'status': 'pending',
-              }),
+              jsonEncode({'id': 'conflict-1', 'status': 'pending'}),
               200,
             );
           }
@@ -265,132 +276,149 @@ void main() {
       expect(notFound, isNull);
     });
 
-    test('reviewConflict sends POST /conflicts/:id/review with notes', () async {
-      final repository = LocalApiVisitRepository(
-        apiKey: 'admin-test-key-123',
-        baseUrl: 'http://127.0.0.1:8787',
-        client: MockClient((request) async {
-          expect(request.method, 'POST');
-          expect(request.url.path, '/conflicts/conflict-1/review');
-          expect(request.headers['x-local-sync-key'], 'admin-test-key-123');
-          final body = jsonDecode(request.body) as Map<String, dynamic>;
-          expect(body['notes'], 'Reviewed by lead supervisor');
-          return http.Response(jsonEncode({'status': 'reviewed'}), 200);
-        }),
-      );
+    test(
+      'reviewConflict sends POST /conflicts/:id/review with notes',
+      () async {
+        final repository = LocalApiVisitRepository(
+          apiKey: 'admin-test-key-123',
+          baseUrl: 'http://127.0.0.1:8787',
+          client: MockClient((request) async {
+            expect(request.method, 'POST');
+            expect(request.url.path, '/conflicts/conflict-1/review');
+            expect(request.headers['x-local-sync-key'], 'admin-test-key-123');
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            expect(body['notes'], 'Reviewed by lead supervisor');
+            return http.Response(jsonEncode({'status': 'reviewed'}), 200);
+          }),
+        );
 
-      await expectLater(
-        repository.reviewConflict(
-          'conflict-1',
-          notes: 'Reviewed by lead supervisor',
-        ),
-        completes,
-      );
-    });
+        await expectLater(
+          repository.reviewConflict(
+            'conflict-1',
+            notes: 'Reviewed by lead supervisor',
+          ),
+          completes,
+        );
+      },
+    );
 
-    test('resolveConflict sends POST /conflicts/:id/resolve with resolution map', () async {
-      final repository = LocalApiVisitRepository(
-        apiKey: 'admin-test-key-123',
-        baseUrl: 'http://127.0.0.1:8787',
-        client: MockClient((request) async {
-          expect(request.method, 'POST');
-          expect(request.url.path, '/conflicts/conflict-1/resolve');
-          expect(request.headers['x-local-sync-key'], 'admin-test-key-123');
-          final body = jsonDecode(request.body) as Map<String, dynamic>;
-          expect(body['action'], 'accept_corrected');
-          expect(body['studyId'], 'C01-000002');
-          expect(body['visitNumber'], 2);
-          return http.Response(jsonEncode({'status': 'resolved'}), 200);
-        }),
-      );
+    test(
+      'resolveConflict sends POST /conflicts/:id/resolve with resolution map',
+      () async {
+        final repository = LocalApiVisitRepository(
+          apiKey: 'admin-test-key-123',
+          baseUrl: 'http://127.0.0.1:8787',
+          client: MockClient((request) async {
+            expect(request.method, 'POST');
+            expect(request.url.path, '/conflicts/conflict-1/resolve');
+            expect(request.headers['x-local-sync-key'], 'admin-test-key-123');
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            expect(body['action'], 'accept_corrected');
+            expect(body['studyId'], 'C01-000002');
+            expect(body['visitNumber'], 2);
+            return http.Response(jsonEncode({'status': 'resolved'}), 200);
+          }),
+        );
 
-      await expectLater(
-        repository.resolveConflict('conflict-1', {
-          'action': 'accept_corrected',
-          'studyId': 'C01-000002',
-          'visitNumber': 2,
-        }),
-        completes,
-      );
-    });
+        await expectLater(
+          repository.resolveConflict('conflict-1', {
+            'action': 'accept_corrected',
+            'studyId': 'C01-000002',
+            'visitNumber': 2,
+          }),
+          completes,
+        );
+      },
+    );
   });
 
   group('Questionnaire and Participant ID preservation', () {
-    test('saveAdminRecord preserves questionnaire in payload and response', () async {
-      final qMap = _sampleQuestionnaire().toMap();
-      final repository = LocalApiVisitRepository(
-        apiKey: 'admin-test-key-123',
-        baseUrl: 'http://127.0.0.1:8787',
-        client: MockClient((request) async {
-          expect(request.method, 'PUT');
-          expect(request.url.path, '/records/visit-101');
-          final body = jsonDecode(request.body) as Map<String, dynamic>;
-          expect(body['questionnaire'], isNotNull);
-          expect(body['questionnaire']['age'], 45);
-          expect(body['questionnaire']['studySite'], 'Site A');
+    test(
+      'saveAdminRecord preserves questionnaire in payload and response',
+      () async {
+        final qMap = _sampleQuestionnaire().toMap();
+        final repository = LocalApiVisitRepository(
+          apiKey: 'admin-test-key-123',
+          baseUrl: 'http://127.0.0.1:8787',
+          client: MockClient((request) async {
+            expect(request.method, 'PUT');
+            expect(request.url.path, '/records/visit-101');
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            expect(body['questionnaire'], isNotNull);
+            expect(body['questionnaire']['age'], 45);
+            expect(body['questionnaire']['studySite'], 'Site A');
 
-          final responseJson = _recordJson(revision: 3)..['questionnaire'] = qMap;
-          return http.Response(jsonEncode(responseJson), 200);
-        }),
-      );
+            final responseJson = _recordJson(revision: 3)
+              ..['questionnaire'] = qMap;
+            return http.Response(jsonEncode(responseJson), 200);
+          }),
+        );
 
-      final record = (await LocalApiVisitRepository(
-        apiKey: 'admin-test-key-123',
-        client: MockClient(
-          (_) async => http.Response(
-            jsonEncode([_recordJson()..['questionnaire'] = qMap]),
-            200,
+        final record = (await LocalApiVisitRepository(
+          apiKey: 'admin-test-key-123',
+          client: MockClient(
+            (_) async => http.Response(
+              jsonEncode([_recordJson()..['questionnaire'] = qMap]),
+              200,
+            ),
           ),
-        ),
-      ).listVisibleTo(admin)).single;
+        ).listVisibleTo(admin)).single;
 
-      expect(record.questionnaire, isNotNull);
-      expect(record.questionnaire!.age, 45);
+        expect(record.questionnaire, isNotNull);
+        expect(record.questionnaire!.age, 45);
 
-      final saved = await repository.saveAdminRecord(
-        actor: admin,
-        record: record,
-      );
+        final saved = await repository.saveAdminRecord(
+          actor: admin,
+          record: record,
+        );
 
-      expect(saved.revision, 3);
-      expect(saved.questionnaire, isNotNull);
-      expect(saved.questionnaire!.age, 45);
-      expect(saved.questionnaire!.studySite, 'Site A');
-    });
+        expect(saved.revision, 3);
+        expect(saved.questionnaire, isNotNull);
+        expect(saved.questionnaire!.age, 45);
+        expect(saved.questionnaire!.studySite, 'Site A');
+      },
+    );
 
-    test('supports both C01-000001 and legacy P001 participant study IDs', () async {
-      final repository = LocalApiVisitRepository(
-        apiKey: 'admin-test-key-123',
-        client: MockClient((_) async {
-          final cRecord = _recordJson()..['participant'] = {
-            'studyId': 'C01-000001',
-            'name': 'Collector Scoped',
-            'indianPhone': '+919000000001',
-          };
-          final pRecord = _recordJson()..['id'] = 'visit-102'..['participant'] = {
-            'studyId': 'P001',
-            'name': 'Legacy Demo',
-            'indianPhone': '+919000000002',
-          };
-          return http.Response(jsonEncode([cRecord, pRecord]), 200);
-        }),
-      );
+    test(
+      'supports both C01-000001 and legacy P001 participant study IDs',
+      () async {
+        final repository = LocalApiVisitRepository(
+          apiKey: 'admin-test-key-123',
+          client: MockClient((_) async {
+            final cRecord = _recordJson()
+              ..['participant'] = {
+                'studyId': 'C01-000001',
+                'name': 'Collector Scoped',
+                'indianPhone': '+919000000001',
+              };
+            final pRecord = _recordJson()
+              ..['id'] = 'visit-102'
+              ..['participant'] = {
+                'studyId': 'P001',
+                'name': 'Legacy Demo',
+                'indianPhone': '+919000000002',
+              };
+            return http.Response(jsonEncode([cRecord, pRecord]), 200);
+          }),
+        );
 
-      final records = await repository.listVisibleTo(admin);
-      expect(records, hasLength(2));
-      expect(records[0].participant.studyId, 'C01-000001');
-      expect(records[1].participant.studyId, 'P001');
-    });
+        final records = await repository.listVisibleTo(admin);
+        expect(records, hasLength(2));
+        expect(records[0].participant.studyId, 'C01-000001');
+        expect(records[1].participant.studyId, 'P001');
+      },
+    );
 
     test('throws LocalApiException on invalid participant study ID', () async {
       final repository = LocalApiVisitRepository(
         apiKey: 'admin-test-key-123',
         client: MockClient((_) async {
-          final invalidRecord = _recordJson()..['participant'] = {
-            'studyId': 'INVALID_ID_999',
-            'name': 'Bad ID Participant',
-            'indianPhone': '+919000000001',
-          };
+          final invalidRecord = _recordJson()
+            ..['participant'] = {
+              'studyId': 'INVALID_ID_999',
+              'name': 'Bad ID Participant',
+              'indianPhone': '+919000000001',
+            };
           return http.Response(jsonEncode([invalidRecord]), 200);
         }),
       );

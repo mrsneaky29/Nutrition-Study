@@ -3,7 +3,14 @@
 For all preserved versions, historical root READMEs, and complete component
 READMEs, see [the version history and README archive](CHANGELOG.md).
 
-## Admin console +6.1
+## Admin console +6.2
+
+The +6.2 checkpoint fixes browser rounding of long Study ID suffixes in record
+lists, detail views, searches, and CSV exports. The digits are normalized with
+arbitrary-precision integers, not JavaScript-number precision. The installed
+phone remains +6; no new APK is included. See
+[the browser verification report](tool/acceptance/ADMIN_6_2_BROWSER_REPORT.md)
+for coverage and remaining limitations.
 
 Collector access now uses the real server instead of a browser-memory demo.
 Create a collector, then choose **Generate sign-in QR** on its card. The QR is
@@ -19,9 +26,10 @@ This update changes the admin console and supporting backend only. The installed
 collector app remains +6, using its existing QR format. Its future source display
 name is +6.1; no new phone APK has been built or installed for this update.
 
-Focused automated verification passed 24 tests and static analysis was clean;
-the admin web release build and live authenticated API checks passed. Full live
-browser acceptance of creation/refresh/QR scanning remains to be checked.
+Current focused verification passed 91 automated tests and static analysis.
+Browser checks covered records, edits, reversible archive, CSV, collector
+creation/QR/reset/disable, mobile layouts, and outage recovery in isolation.
+Two-phone takeover and final production acceptance are separate checks.
 
 Nutrition Study 1.0.0+6 adds mandatory QR sign-in for production collector
 builds. The project has two separate clients: the Android collector app

@@ -535,12 +535,10 @@ class LocalApiVisitRepository
       );
     }
     final digits = match.group(2)!;
-    final number = int.parse(digits);
-    return ParticipantIdPolicy(
-      prefix: match.group(1)!.toUpperCase(),
-      firstNumber: number,
-      lastNumber: number,
-      padding: digits.length,
+    return _ServerStudyIdPolicy(
+      normalizeParticipantStudyId(studyId)!,
+      match.group(1)!.toUpperCase(),
+      digits.length,
     );
   }
 
@@ -555,6 +553,21 @@ class LocalApiVisitRepository
       'The local REST repository is available to the standalone admin portal only.',
     ),
   );
+}
+
+// Admin records have an immutable server identity, not a numeric ID range.
+// Never route long random suffixes through a JavaScript number.
+class _ServerStudyIdPolicy extends ParticipantIdPolicy {
+  _ServerStudyIdPolicy(this.exactId, String prefix, int padding)
+    : super(prefix: prefix, firstNumber: 1, lastNumber: 1, padding: padding);
+
+  final String exactId;
+
+  @override
+  String? normalize(String? value) {
+    final normalized = normalizeParticipantStudyId(value);
+    return normalized == exactId ? exactId : null;
+  }
 }
 
 class LocalApiException implements Exception {

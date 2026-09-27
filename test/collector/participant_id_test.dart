@@ -2,6 +2,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:project2/domain/participant_id.dart';
 
 void main() {
+  test('long Study ID digits survive browser normalization exactly', () {
+    for (final suffix in [
+      '9283019284710293',
+      '9939147164242272',
+      '123456789012345678901234567890',
+    ]) {
+      expect(normalizeParticipantStudyId('C01-$suffix'), 'C01-$suffix');
+      expect(normalizeParticipantStudyId('P$suffix'), 'P$suffix');
+    }
+  });
   test('collector Study IDs normalize without a collector-number cap', () {
     expect(formatCollectorParticipantStudyId(1, 201), 'C01-000201');
     expect(formatCollectorParticipantStudyId(1, 100000000), 'C01-100000000');
@@ -9,7 +19,8 @@ void main() {
     expect(normalizeParticipantStudyId(' c001-000201 '), 'C01-000201');
     expect(extractCollectorNumberFromStudyId('C001-000201'), 1);
     final supportedPrefixes = List.generate(
-      101, (index) => collectorParticipantPrefix(index + 1),
+      101,
+      (index) => collectorParticipantPrefix(index + 1),
     );
     expect(supportedPrefixes.toSet().length, 101);
     expect(supportedPrefixes.first, 'C01-');
@@ -25,8 +36,12 @@ void main() {
 
   test('rejects zero and malformed Study IDs', () {
     for (final id in [
-      'C00-000001', 'C01-000000', 'C01-12345',
-      'P000', 'P01', 'P000000',
+      'C00-000001',
+      'C01-000000',
+      'C01-12345',
+      'P000',
+      'P01',
+      'P000000',
     ]) {
       expect(isValidParticipantStudyId(id), isFalse, reason: id);
       expect(normalizeParticipantStudyId(id), isNull, reason: id);

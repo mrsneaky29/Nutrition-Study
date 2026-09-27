@@ -10,7 +10,10 @@
 library;
 
 /// Matches collector-scoped IDs like `C01-000001` or `C001-000001`.
-final _collectorScopedRegex = RegExp(r'^C(\d{2,})-(\d{6,})$', caseSensitive: false);
+final _collectorScopedRegex = RegExp(
+  r'^C(\d{2,})-(\d{6,})$',
+  caseSensitive: false,
+);
 
 /// Matches legacy IDs like `P001`, `P0001`.
 final _legacyParticipantRegex = RegExp(r'^P(\d{3,})$', caseSensitive: false);
@@ -29,9 +32,12 @@ String? normalizeParticipantStudyId(String? studyId) {
   final collectorMatch = _collectorScopedRegex.firstMatch(trimmed);
   if (collectorMatch != null) {
     final collectorNum = BigInt.tryParse(collectorMatch.group(1)!);
-    final seqNum = int.tryParse(collectorMatch.group(2)!);
-    if (collectorNum == null || collectorNum < BigInt.one ||
-        seqNum == null || seqNum < 1) {
+    // JavaScript integers round long random suffixes; preserve exact digits.
+    final seqNum = BigInt.tryParse(collectorMatch.group(2)!);
+    if (collectorNum == null ||
+        collectorNum < BigInt.one ||
+        seqNum == null ||
+        seqNum < BigInt.one) {
       return null;
     }
     final colStr = collectorNum.toString().padLeft(2, '0');
@@ -41,8 +47,8 @@ String? normalizeParticipantStudyId(String? studyId) {
 
   final legacyMatch = _legacyParticipantRegex.firstMatch(trimmed);
   if (legacyMatch != null) {
-    final num = int.tryParse(legacyMatch.group(1)!);
-    if (num == null || num < 1) return null;
+    final num = BigInt.tryParse(legacyMatch.group(1)!);
+    if (num == null || num < BigInt.one) return null;
     final digits = legacyMatch.group(1)!;
     return 'P${num.toString().padLeft(digits.length, '0')}';
   }
@@ -52,7 +58,10 @@ String? normalizeParticipantStudyId(String? studyId) {
 
 /// Generates a collector-scoped Study ID from any positive collector number
 /// and any positive sequence number.
-String formatCollectorParticipantStudyId(int collectorNumber, int sequenceNumber) {
+String formatCollectorParticipantStudyId(
+  int collectorNumber,
+  int sequenceNumber,
+) {
   if (collectorNumber < 1) {
     throw ArgumentError.value(
       collectorNumber,
