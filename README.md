@@ -1,5 +1,8 @@
 # Nutrition Study
 
+For all preserved versions, historical root READMEs, and complete component
+READMEs, see [the version history and README archive](CHANGELOG.md).
+
 ## Admin console +6.1
 
 Collector access now uses the real server instead of a browser-memory demo.
