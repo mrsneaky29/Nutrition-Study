@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-server="$(cd "$(dirname "$0")/.." && pwd)/local_sync_server.dart"
+server="${LOCAL_SYNC_SERVER_SOURCE:-$(cd "$(dirname "$0")/.." && pwd)/local_sync_server.dart}"
 [[ -f "$server" ]] || { echo "Backend source not found: $server" >&2; exit 1; }
 command -v dart >/dev/null && command -v curl >/dev/null || { echo "dart and curl are required" >&2; exit 1; }
 
@@ -135,6 +135,7 @@ payload=$(cat <<EOF
     "note": "Canary measurement"
   },
   "questionnaire": {
+    "schemaVersion": 3,
     "studySite": "community_clinic",
     "sex": "female",
     "education": "secondary",
@@ -150,12 +151,14 @@ payload=$(cat <<EOF
     "heightCm": 160,
     "weightKg": 64,
     "waistCm": 80,
+    "hipCm": 100,
     "bpOneSystolic": 120,
     "bpOneDiastolic": 80,
     "bpTwoSystolic": 118,
     "bpTwoDiastolic": 78,
     "weeklyActiveMinutes": 120,
     "bmi": 25.0,
+    "waistHipRatio": 0.8,
     "averageSystolic": 119.0,
     "averageDiastolic": 79.0
   },
@@ -183,6 +186,10 @@ admin_health_after_submit=$(curl --fail --silent -H "x-local-sync-key: $admin_ke
 admin_records=$(curl --fail --silent -H "x-local-sync-key: $admin_key" -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$port/sync/records")
 [[ "$admin_records" == *"$record_id"* ]] || {
   echo "Admin records query did not contain record $record_id: $admin_records" >&2
+  exit 1
+}
+[[ "$admin_records" == *'"hipCm":100'* && "$admin_records" == *'"waistHipRatio":0.8'* ]] || {
+  echo "Admin records query did not retain version-3 hip measurements." >&2
   exit 1
 }
 echo "PASS: admin health and record query confirmed record present."

@@ -545,14 +545,15 @@ class _LogoMark extends StatelessWidget {
   const _LogoMark();
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: 36,
-    height: 36,
-    decoration: BoxDecoration(
-      color: const Color(0xFF7EA2FF),
-      borderRadius: BorderRadius.circular(11),
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(11),
+    child: Image.asset(
+      'web/icons/Vivayu-192.png',
+      width: 36,
+      height: 36,
+      fit: BoxFit.cover,
+      semanticLabel: 'Vivayu logo',
     ),
-    child: const Icon(Icons.insights_rounded, color: Color(0xFF10224B)),
   );
 }
 
@@ -1692,6 +1693,72 @@ class _RecordDetailsState extends State<_RecordDetails> {
                       value: '${questionnaire.age} · ${questionnaire.sex}',
                     ),
                     _DetailRow(
+                      label: 'Education',
+                      value: _answerDetail(questionnaire.education),
+                    ),
+                    _DetailRow(
+                      label: 'Employment',
+                      value: _answerDetail(questionnaire.employment),
+                    ),
+                    _DetailRow(
+                      label: 'Tobacco use',
+                      value: _answerDetail(questionnaire.tobaccoUse),
+                    ),
+                    _DetailRow(
+                      label: 'Tobacco type',
+                      value: _answerDetail(questionnaire.tobaccoType),
+                    ),
+                    _DetailRow(
+                      label: 'Tobacco frequency',
+                      value: _answerDetail(questionnaire.tobaccoFrequency),
+                    ),
+                    _DetailRow(
+                      label: 'Alcohol in past 30 days',
+                      value: _answerDetail(questionnaire.alcoholPast30Days),
+                    ),
+                    _DetailRow(
+                      label: 'Alcohol frequency',
+                      value: _answerDetail(questionnaire.alcoholFrequency),
+                    ),
+                    _DetailRow(
+                      label: 'Fruit frequency',
+                      value: _answerDetail(questionnaire.fruitFrequency),
+                    ),
+                    _DetailRow(
+                      label: 'Vegetable frequency',
+                      value: _answerDetail(questionnaire.vegetableFrequency),
+                    ),
+                    _DetailRow(
+                      label: 'Sugary drinks',
+                      value: _answerDetail(questionnaire.sugaryDrinkFrequency),
+                    ),
+                    _DetailRow(
+                      label: 'Processed food',
+                      value: _answerDetail(
+                        questionnaire.processedFoodFrequency,
+                      ),
+                    ),
+                    _DetailRow(
+                      label: 'Hypertension diagnosis',
+                      value: _answerDetail(questionnaire.hypertensionDiagnosis),
+                    ),
+                    _DetailRow(
+                      label: 'Diabetes diagnosis',
+                      value: _answerDetail(questionnaire.diabetesDiagnosis),
+                    ),
+                    _DetailRow(
+                      label: 'High cholesterol diagnosis',
+                      value: _answerDetail(
+                        questionnaire.highCholesterolDiagnosis,
+                      ),
+                    ),
+                    _DetailRow(
+                      label: 'Cardiovascular diagnosis',
+                      value: _answerDetail(
+                        questionnaire.cardiovascularDiagnosis,
+                      ),
+                    ),
+                    _DetailRow(
                       label: 'Height',
                       value: _measurementDetail(
                         questionnaire.heightCm,
@@ -1714,6 +1781,22 @@ class _RecordDetailsState extends State<_RecordDetails> {
                         'cm',
                         questionnaire.waistMissingReason,
                       ),
+                    ),
+                    _DetailRow(
+                      label: 'Hip',
+                      value: questionnaire.version < 3
+                          ? 'Not collected'
+                          : _measurementDetail(
+                              questionnaire.hipCm,
+                              'cm',
+                              questionnaire.hipMissingReason,
+                            ),
+                    ),
+                    _DetailRow(
+                      label: 'Waist-to-hip ratio',
+                      value:
+                          questionnaire.waistHipRatio?.toStringAsFixed(2) ??
+                          'Not calculated',
                     ),
                     _DetailRow(
                       label: 'BP1',
@@ -1748,6 +1831,14 @@ class _RecordDetailsState extends State<_RecordDetails> {
                     _DetailRow(
                       label: 'Activity',
                       value: '${questionnaire.weeklyActiveMinutes} min/week',
+                    ),
+                    _DetailRow(
+                      label: 'Active days per week',
+                      value: '${questionnaire.activeDaysPerWeek}',
+                    ),
+                    _DetailRow(
+                      label: 'Active minutes per day',
+                      value: '${questionnaire.activeMinutesPerDay}',
                     ),
                     _DetailRow(
                       label: 'Sleep',
@@ -1816,6 +1907,9 @@ String _measurementDetail(num? value, String unit, String? missingReason) {
   final formatted = value == value.toInt() ? '${value.toInt()}' : '$value';
   return '$formatted $unit';
 }
+
+String _answerDetail(String? value) =>
+    value == null ? 'Not recorded' : value.replaceAll('_', ' ');
 
 String _bloodPressureDetail(
   int? systolic,

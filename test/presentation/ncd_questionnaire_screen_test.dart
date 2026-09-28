@@ -1,8 +1,42 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:project2/domain/ncd_questionnaire.dart';
 import 'package:project2/presentation/ncd_questionnaire_screen.dart';
 
 void main() {
+  testWidgets('hip measurement is saved with calculated waist-to-hip ratio', (
+    tester,
+  ) async {
+    NcdQuestionnaire? completed;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NcdQuestionnaireScreen(
+          initialDraft: _validMeasurementDraft(),
+          onComplete: (value) => completed = value,
+        ),
+      ),
+    );
+    expect(find.text('Hip circumference (cm)'), findsWidgets);
+    await _tapReviewQuestionnaire(tester);
+    expect(completed?.version, 3);
+    expect(completed?.hipCm, 100);
+    expect(completed?.waistHipRatio, 0.8);
+  });
+
+  testWidgets('hip measurement is required unless a missing reason is chosen', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NcdQuestionnaireScreen(
+          initialDraft: {..._validMeasurementDraft(), 'hip': ''},
+        ),
+      ),
+    );
+    await _tapReviewQuestionnaire(tester);
+    expect(find.text('Enter a value from 30 to 250.'), findsOneWidget);
+  });
+
   testWidgets('rejects a blood pressure pair when systolic is lower', (
     tester,
   ) async {
@@ -118,9 +152,22 @@ Map<String, Object?> _validMeasurementDraft({
   String bp2d = '78',
 }) => {
   'measurements': true,
+  'site': 'community_clinic',
+  'age': '34',
+  'sex': 'female',
+  'education': 'secondary',
+  'employment': 'employed',
+  'fruit': 'daily',
+  'vegetables': 'daily',
+  'sugaryDrinks': 'never',
+  'processedFood': 'never',
+  'activeDays': '3',
+  'activeMinutes': '30',
+  'sleep': '7',
   'height': height,
   'weight': '70',
   'waist': '80',
+  'hip': '100',
   'bp1s': bp1s,
   'bp1d': bp1d,
   'bp2s': bp2s,

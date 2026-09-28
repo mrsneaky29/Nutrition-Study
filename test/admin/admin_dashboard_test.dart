@@ -31,6 +31,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Study operations'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Image &&
+            widget.image is AssetImage &&
+            (widget.image as AssetImage).assetName ==
+                'web/icons/Vivayu-192.png',
+      ),
+      findsOneWidget,
+    );
 
     await tester.enterText(find.byType(TextField), 'not-a-record');
     await tester.pump();
@@ -264,9 +274,72 @@ void main() {
 
     expect(find.text('Unable to measure'), findsNWidgets(3));
     expect(find.text('Participant declined'), findsNWidgets(2));
-    expect(find.text('Not recorded'), findsNWidgets(2));
+    expect(find.text('Not recorded'), findsAtLeastNWidgets(2));
     expect(find.text('BMI'), findsOneWidget);
     expect(find.text('Average BP'), findsOneWidget);
+  });
+
+  testWidgets('admin details include interview answers and v3 hip ratio', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    String? copiedCsv;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copiedCsv = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+    final repository = createAdminDemoRepository();
+    final original = (await repository.getById('visit-101', admin))!;
+    final current = NcdQuestionnaire.fromMap({
+      ..._completeQuestionnaire.toMap(),
+      'schemaVersion': 3,
+      'hipCm': 100,
+      'hipMissingReason': null,
+      'waistHipRatio': 0.88,
+      'tobaccoUse': 'never',
+      'alcoholPast30Days': 'no',
+    })!;
+    await repository.saveAdminRecord(
+      actor: admin,
+      record: original.copyWith(questionnaire: current),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AdminDashboard(repository: repository, admin: admin),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Demo Participant 1').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Hip'), findsOneWidget);
+    expect(find.text('100 cm'), findsOneWidget);
+    expect(find.text('Waist-to-hip ratio'), findsOneWidget);
+    expect(find.text('0.88'), findsOneWidget);
+    expect(find.text('Tobacco use'), findsOneWidget);
+    expect(find.text('never'), findsOneWidget);
+    expect(find.text('Alcohol in past 30 days'), findsOneWidget);
+    expect(find.text('no'), findsOneWidget);
+    expect(find.text('Fruit frequency'), findsOneWidget);
+    expect(find.text('Active days per week'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.close).last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Copy CSV'));
+    await tester.tap(find.text('Copy CSV'));
+    await tester.pumpAndSettle();
+    expect(copiedCsv, contains('ncd_hip_cm'));
+    expect(copiedCsv, contains('ncd_hip_missing_reason'));
+    expect(copiedCsv, contains('ncd_waist_hip_ratio'));
+    expect(copiedCsv, contains('ncd_tobacco_use'));
   });
 
   testWidgets('admin record details scroll on a phone-sized viewport', (

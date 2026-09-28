@@ -35,8 +35,11 @@ if ($BuildName -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
 }
 $hasUrl = -not [string]::IsNullOrWhiteSpace($LocalApiBaseUrl)
 $hasKey = -not [string]::IsNullOrWhiteSpace($CollectorApiKey)
+if ($PublicRelease -and -not $hasUrl) {
+  throw "Public QR sign-in requires LocalApiBaseUrl. Supply the production HTTPS API origin; do not embed collector credentials."
+}
 if ($hasKey -or -not [string]::IsNullOrWhiteSpace($CollectorId) -or $CollectorNumber -ne 0) {
-  throw "This release uses one shared APK. Do not embed a collector key or number; collectors enter those when signing in."
+  throw "This release uses one shared APK. Do not embed a collector key or number; collectors scan their setup QR when signing in."
 }
 if ($hasUrl) {
   $apiUri = $null

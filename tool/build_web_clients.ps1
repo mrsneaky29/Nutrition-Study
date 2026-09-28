@@ -93,14 +93,57 @@ function Update-AdminWebMetadata {
   $adminOutput = Join-Path $projectDirectory "build/admin_web"
   Replace-RequiredText (Join-Path $adminOutput "index.html") @{
     'content="Mobile study data collection for authorized field staff."' = 'content="Secure browser portal for authorized study administrators."'
-    'content="Study Collector"' = 'content="Study Admin"'
-    '<title>Study Collector</title>' = '<title>Study Admin</title>'
   }
   Replace-RequiredText (Join-Path $adminOutput "manifest.json") @{
-    '"name": "Study Collector"' = '"name": "Study Admin"'
-    '"short_name": "Collector"' = '"short_name": "Study Admin"'
     '"description": "Mobile study data collection for authorized field staff."' = '"description": "Secure browser portal for authorized study administrators."'
   }
+
+  # Admin data must not be displayed by an older Flutter service worker after a
+  # deployment. The Android collector retains its own offline storage behavior.
+  $bootstrapPath = Join-Path $adminOutput "flutter_bootstrap.js"
+  $bootstrap = Get-Content -LiteralPath $bootstrapPath -Raw
+  $registration = '(?s)_flutter\.loader\.load\(\{\s*serviceWorkerSettings:\s*\{.*?\}\s*\}\);'
+  if (-not [regex]::IsMatch($bootstrap, $registration)) {
+    throw "Expected Flutter service-worker registration was not found in $bootstrapPath"
+  }
+  $bootstrap = [regex]::Replace($bootstrap, $registration, '_flutter.loader.load();')
+  [System.IO.File]::WriteAllText($bootstrapPath, $bootstrap, [System.Text.UTF8Encoding]::new($false))
+
+  $indexPath = Join-Path $adminOutput "index.html"
+  $index = Get-Content -LiteralPath $indexPath -Raw
+  $loader = '<script src="flutter_bootstrap.js" async></script>'
+  if (-not $index.Contains($loader)) {
+    throw "Expected Flutter bootstrap tag was not found in $indexPath"
+  }
+  $safeLoader = @'
+<script>
+  (async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        if (registrations.length) {
+          await Promise.all(registrations.map((registration) => registration.unregister()));
+          const keys = await caches.keys();
+          await Promise.all(keys.map((key) => caches.delete(key)));
+          if (navigator.serviceWorker.controller) {
+            location.reload();
+            return;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Could not clear an older admin cache:', error);
+    }
+    const script = document.createElement('script');
+    script.src = 'flutter_bootstrap.js';
+    document.body.append(script);
+  })();
+</script>
+'@
+  $index = $index.Replace($loader, $safeLoader)
+  [System.IO.File]::WriteAllText($indexPath, $index, [System.Text.UTF8Encoding]::new($false))
+
+  Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'vps/retire-flutter-sw.js') -Destination (Join-Path $adminOutput 'flutter_service_worker.js') -Force
 }
 
 Push-Location $projectDirectory

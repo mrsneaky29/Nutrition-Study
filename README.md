@@ -5,9 +5,24 @@ console. Existing package identifiers, deployment domains and historical release
 names are preserved for compatibility.
 
 The visible app/console name is exactly `Vivayu`, without a version suffix.
-The renamed collector distribution uses internal version `1.0.0+7` so it can
+The Vivayu +8.1 collector distribution uses internal version `1.0.1+9` so it can
 update an older signed build. Existing installed phone apps are not changed
 until the user installs the new package.
+
+## Vivayu +8.1 questionnaire
+
+New questionnaire submissions record hip circumference in centimetres or an
+explicit `unable`/`declined` reason. The app and server calculate waist-to-hip
+ratio as waist circumference divided by hip circumference, only when both
+measurements are present. Version-3 records retain both inputs and the derived
+ratio in the admin view and CSV. Older questionnaire versions remain readable
+without inventing a hip measurement or ratio. The admin record view also shows
+the full interview answers, including tobacco, alcohol, diet, activity and
+diagnoses. Deploy the version-3-capable server before distributing the new APK.
+If an existing browser still displays “Study Admin +6.3”, open the site in a
+private tab or clear site data for the admin domain; the current admin page is
+“Vivayu”. Clearing browser site data signs out that browser but does not delete
+server records.
 
 For all preserved versions, historical root READMEs, and complete component
 READMEs, see [the version history and README archive](CHANGELOG.md).

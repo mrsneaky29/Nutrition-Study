@@ -8,16 +8,42 @@ import 'package:http/testing.dart';
 import 'package:project2/local_demo_app.dart';
 import 'package:project2/local_storage/local_record_store.dart';
 import 'package:project2/local_sync/http_local_record_sync_client.dart';
+import 'package:project2/presentation/sign_in_screen.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'public release restores saved HTTPS session without compiled server URL',
+    'fresh public install supplies compiled origin to QR sign-in',
     (tester) async {
-      expect(HttpLocalRecordSyncClient.configuredApiBaseUrl, isEmpty);
+      FlutterSecureStorage.setMockInitialValues({});
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LocalDemoApp(
+            recordStore: _MemoryRecordStore([]),
+            secureStorage: const FlutterSecureStorage(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final signIn = tester.widget<SignInScreen>(find.byType(SignInScreen));
+      expect(signIn.initialServerUrl, 'https://api.nutrition.achantalabs.com');
+      expect(signIn.requireHttps, isTrue);
+      expect(signIn.showLocalSetup, isTrue);
+      expect(find.byType(TextFormField), findsNothing);
+    },
+    skip:
+        !const bool.fromEnvironment('LOCAL_GENERIC_RELEASE') ||
+        !const bool.fromEnvironment('LOCAL_PUBLIC_RELEASE') ||
+        HttpLocalRecordSyncClient.configuredApiBaseUrl.isEmpty,
+  );
 
+  testWidgets(
+    'public release restores session using trusted configured or saved origin',
+    (tester) async {
       const savedUrl = 'https://saved.example.test';
+      const configuredUrl = HttpLocalRecordSyncClient.configuredApiBaseUrl;
+      const expectedUrl = configuredUrl == '' ? savedUrl : configuredUrl;
       const savedKey = 'synthetic-public-release-key';
       const savedToken = 'synthetic-restored-session';
       FlutterSecureStorage.setMockInitialValues({
@@ -49,7 +75,7 @@ void main() {
       expect(find.text('Hello, Collector 7'), findsOneWidget);
       expect(find.byType(TextFormField), findsNothing);
       expect(observedRequest, isNotNull);
-      expect(observedRequest!.url, Uri.parse('$savedUrl/records'));
+      expect(observedRequest!.url, Uri.parse('$expectedUrl/records'));
       expect(observedRequest!.url.scheme, 'https');
       expect(observedRequest!.headers['x-local-sync-key'], savedKey);
       expect(observedRequest!.headers['x-local-session'], savedToken);
@@ -57,7 +83,8 @@ void main() {
       expect(await storage.read(key: 'local_server_url'), savedUrl);
       expect(await storage.read(key: 'local_session_token'), savedToken);
     },
-    skip: !const bool.fromEnvironment('LOCAL_GENERIC_RELEASE') ||
+    skip:
+        !const bool.fromEnvironment('LOCAL_GENERIC_RELEASE') ||
         !const bool.fromEnvironment('LOCAL_PUBLIC_RELEASE'),
   );
 }

@@ -6,9 +6,10 @@
 class NcdQuestionnaire {
   /// Persisted with each response so later questionnaire revisions remain
   /// distinguishable in operational records and analysis exports.
-  static const int schemaVersion = 2;
+  static const int schemaVersion = 3;
 
   const NcdQuestionnaire({
+    this.version = 2,
     required this.studySite,
     required this.age,
     required this.sex,
@@ -24,6 +25,7 @@ class NcdQuestionnaire {
     required this.heightCm,
     required this.weightKg,
     required this.waistCm,
+    this.hipCm,
     required this.bpOneSystolic,
     required this.bpOneDiastolic,
     required this.bpTwoSystolic,
@@ -31,6 +33,7 @@ class NcdQuestionnaire {
     this.heightMissingReason,
     this.weightMissingReason,
     this.waistMissingReason,
+    this.hipMissingReason,
     this.bpOneMissingReason,
     this.bpTwoMissingReason,
     this.tobaccoUse,
@@ -42,28 +45,54 @@ class NcdQuestionnaire {
     this.diabetesDiagnosis,
     this.highCholesterolDiagnosis,
     this.cardiovascularDiagnosis,
-  }) : assert(age >= 18),
+  }) : assert(version >= 1 && version <= schemaVersion),
+       assert(age >= 18),
        assert(heightCm == null || heightCm > 0),
        assert(weightKg == null || weightKg > 0),
        assert(waistCm == null || waistCm > 0),
+       assert(hipCm == null || hipCm > 0),
+       assert(
+         version != 3 ||
+             (hipCm != null
+                 ? hipMissingReason == null
+                 : hipMissingReason == 'unable' ||
+                       hipMissingReason == 'declined'),
+       ),
        assert((bpOneSystolic == null) == (bpOneDiastolic == null)),
        assert((bpTwoSystolic == null) == (bpTwoDiastolic == null)),
-       assert(heightCm != null
-           ? heightMissingReason == null
-           : heightMissingReason == 'unable' || heightMissingReason == 'declined'),
-       assert(weightKg != null
-           ? weightMissingReason == null
-           : weightMissingReason == 'unable' || weightMissingReason == 'declined'),
-       assert(waistCm != null
-           ? waistMissingReason == null
-           : waistMissingReason == 'unable' || waistMissingReason == 'declined'),
-       assert(bpOneSystolic != null
-           ? bpOneMissingReason == null
-           : bpOneMissingReason == 'unable' || bpOneMissingReason == 'declined'),
-       assert(bpTwoSystolic != null
-           ? bpTwoMissingReason == null
-           : bpTwoMissingReason == 'unable' || bpTwoMissingReason == 'declined');
+       assert(
+         heightCm != null
+             ? heightMissingReason == null
+             : heightMissingReason == 'unable' ||
+                   heightMissingReason == 'declined',
+       ),
+       assert(
+         weightKg != null
+             ? weightMissingReason == null
+             : weightMissingReason == 'unable' ||
+                   weightMissingReason == 'declined',
+       ),
+       assert(
+         waistCm != null
+             ? waistMissingReason == null
+             : waistMissingReason == 'unable' ||
+                   waistMissingReason == 'declined',
+       ),
+       assert(
+         bpOneSystolic != null
+             ? bpOneMissingReason == null
+             : bpOneMissingReason == 'unable' ||
+                   bpOneMissingReason == 'declined',
+       ),
+       assert(
+         bpTwoSystolic != null
+             ? bpTwoMissingReason == null
+             : bpTwoMissingReason == 'unable' ||
+                   bpTwoMissingReason == 'declined',
+       );
 
+  /// Existing constructors/records remain version 2; the current form emits 3.
+  final int version;
   final String studySite;
   final int age;
   final String sex;
@@ -79,6 +108,7 @@ class NcdQuestionnaire {
   final double? heightCm;
   final double? weightKg;
   final double? waistCm;
+  final double? hipCm;
   final int? bpOneSystolic;
   final int? bpOneDiastolic;
   final int? bpTwoSystolic;
@@ -88,6 +118,7 @@ class NcdQuestionnaire {
   final String? heightMissingReason;
   final String? weightMissingReason;
   final String? waistMissingReason;
+  final String? hipMissingReason;
   final String? bpOneMissingReason;
   final String? bpTwoMissingReason;
   final String? tobaccoUse;
@@ -104,6 +135,8 @@ class NcdQuestionnaire {
   double? get bmi => heightCm == null || weightKg == null
       ? null
       : weightKg! / ((heightCm! / 100) * (heightCm! / 100));
+  double? get waistHipRatio =>
+      waistCm == null || hipCm == null ? null : waistCm! / hipCm!;
   double? get averageSystolic => bpOneSystolic == null || bpTwoSystolic == null
       ? null
       : (bpOneSystolic! + bpTwoSystolic!) / 2;
@@ -113,7 +146,7 @@ class NcdQuestionnaire {
       : (bpOneDiastolic! + bpTwoDiastolic!) / 2;
 
   Map<String, Object?> toMap() => {
-    'schemaVersion': schemaVersion,
+    'schemaVersion': version,
     'studySite': studySite,
     'age': age,
     'sex': sex,
@@ -139,10 +172,13 @@ class NcdQuestionnaire {
     'heightCm': heightCm,
     'weightKg': weightKg,
     'waistCm': waistCm,
+    if (version >= 3) 'hipCm': hipCm,
     'heightMissingReason': heightMissingReason,
     'weightMissingReason': weightMissingReason,
     'waistMissingReason': waistMissingReason,
+    if (version >= 3) 'hipMissingReason': hipMissingReason,
     'bmi': bmi,
+    if (version >= 3) 'waistHipRatio': waistHipRatio,
     'bpOneSystolic': bpOneSystolic,
     'bpOneDiastolic': bpOneDiastolic,
     'bpTwoSystolic': bpTwoSystolic,
@@ -162,48 +198,65 @@ class NcdQuestionnaire {
     final json = Map<String, Object?>.from(value);
     // Unversioned and v1 records always had numeric measurements.
     final version = json['schemaVersion'] ?? 1;
-    if (version != 1 && version != schemaVersion) return null;
+    if (version is! int ||
+        (version != 1 && version != 2 && version != schemaVersion)) {
+      return null;
+    }
     try {
       final height = _measurementNumber(
         json,
         'heightCm',
         'heightMissingReason',
-        version == schemaVersion,
+        version >= 2,
       );
       final weight = _measurementNumber(
         json,
         'weightKg',
         'weightMissingReason',
-        version == schemaVersion,
+        version >= 2,
       );
       final waist = _measurementNumber(
         json,
         'waistCm',
         'waistMissingReason',
-        version == schemaVersion,
+        version >= 2,
       );
+      final hip = version >= 3
+          ? _measurementNumber(json, 'hipCm', 'hipMissingReason', true)
+          : null;
+      if (version >= 3) {
+        final ratio = waist == null || hip == null ? null : waist / hip;
+        final actual = json['waistHipRatio'];
+        if (ratio == null
+            ? actual != null
+            : actual is! num || (actual - ratio).abs() > 0.0001) {
+          throw const FormatException('Invalid waist-to-hip ratio.');
+        }
+      }
       final bpOne = _bpPair(
         json,
         'bpOneSystolic',
         'bpOneDiastolic',
         'bpOneMissingReason',
-        version == schemaVersion,
+        version >= 2,
       );
       final bpTwo = _bpPair(
         json,
         'bpTwoSystolic',
         'bpTwoDiastolic',
         'bpTwoMissingReason',
-        version == schemaVersion,
+        version >= 2,
       );
       final age = _integer(json, 'age');
       if (age < 18 ||
           height != null && height <= 0 ||
           weight != null && weight <= 0 ||
-          waist != null && waist <= 0) {
+          waist != null && waist <= 0 ||
+          hip != null && hip <= 0) {
         throw const FormatException('Invalid questionnaire measurement.');
       }
       return NcdQuestionnaire(
+        version: version,
         studySite: _text(json, 'studySite'),
         age: age,
         sex: _text(json, 'sex'),
@@ -219,9 +272,13 @@ class NcdQuestionnaire {
         heightCm: height,
         weightKg: weight,
         waistCm: waist,
+        hipCm: hip,
         heightMissingReason: _optional(json, 'heightMissingReason'),
         weightMissingReason: _optional(json, 'weightMissingReason'),
         waistMissingReason: _optional(json, 'waistMissingReason'),
+        hipMissingReason: version >= 3
+            ? _optional(json, 'hipMissingReason')
+            : null,
         bpOneSystolic: bpOne.$1,
         bpOneDiastolic: bpOne.$2,
         bpTwoSystolic: bpTwo.$1,
@@ -257,16 +314,15 @@ class NcdQuestionnaire {
     }
     return value.toInt();
   }
-  static double _number(Map<String, Object?> json, String key) =>
-      _finiteNumber(
-        json[key] is num
-            ? (json[key] as num).toDouble()
-            : double.parse('${json[key]}'),
-        key,
-      );
-  static double _finiteNumber(double value, String key) => value.isFinite
-      ? value
-      : throw FormatException('Invalid $key.');
+
+  static double _number(Map<String, Object?> json, String key) => _finiteNumber(
+    json[key] is num
+        ? (json[key] as num).toDouble()
+        : double.parse('${json[key]}'),
+    key,
+  );
+  static double _finiteNumber(double value, String key) =>
+      value.isFinite ? value : throw FormatException('Invalid $key.');
   static bool _validMissingReason(String? value) =>
       value == 'declined' || value == 'unable';
   static double? _measurementNumber(

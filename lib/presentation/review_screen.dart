@@ -188,6 +188,20 @@ class ReviewScreen extends StatelessWidget {
                     : _measurementText(q.waistCm, q.waistMissingReason, 'cm'),
               ),
               _ReviewLine(
+                'Hip circumference',
+                q == null
+                    ? _notCompleted
+                    : q.version < 3
+                    ? 'Not collected'
+                    : _measurementText(q.hipCm, q.hipMissingReason, 'cm'),
+              ),
+              _ReviewLine(
+                'Waist-to-hip ratio',
+                q == null
+                    ? _notCompleted
+                    : q.waistHipRatio?.toStringAsFixed(2) ?? 'Not calculated',
+              ),
+              _ReviewLine(
                 'BMI',
                 q == null
                     ? _notCompleted
@@ -215,9 +229,7 @@ class ReviewScreen extends StatelessWidget {
               ),
               _ReviewLine(
                 'Average blood pressure',
-                q == null
-                    ? _notCompleted
-                    : _averageBloodPressure(q),
+                q == null ? _notCompleted : _averageBloodPressure(q),
               ),
             ],
           ),
@@ -297,11 +309,7 @@ const _frequencyLabels = {
   'five_to_six_days': '5–6 days',
   'daily': 'Every day',
 };
-const _diagnosisLabels = {
-  'yes': 'Yes',
-  'no': 'No',
-  'dont_know': 'Don’t know',
-};
+const _diagnosisLabels = {'yes': 'Yes', 'no': 'No', 'dont_know': 'Don’t know'};
 
 String _answer(
   NcdQuestionnaire? questionnaire,

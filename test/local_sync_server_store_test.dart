@@ -182,6 +182,54 @@ void main() {
     });
 
     test(
+      'v3 accepts hip and ratio, rejects missing or forged values',
+      () async {
+        final current = {
+          ..._validQuestionnaireV2(),
+          'schemaVersion': 3,
+          'hipCm': 100,
+          'hipMissingReason': null,
+          'waistHipRatio': 0.8,
+        };
+        final accepted = await store.upsertCollector(
+          _submission(questionnaire: current),
+        );
+        expect(accepted['questionnaire']['hipCm'], 100);
+        expect(accepted['questionnaire']['waistHipRatio'], 0.8);
+
+        Future<void> reject(Map<String, dynamic> invalid) => _expectBadRequest(
+          store.upsertCollector(
+            _submission(
+              id: 'invalid-v3',
+              key: 'invalid-v3-key',
+              questionnaire: invalid,
+            ),
+          ),
+        );
+        await reject({...current, 'waistHipRatio': 0.9});
+        await reject({...current}..remove('hipCm'));
+        await reject({...current, 'hipCm': null, 'waistHipRatio': null});
+        await reject({...current, 'hipCm': -1, 'waistHipRatio': -80});
+        final unable = {
+          ...current,
+          'hipCm': null,
+          'hipMissingReason': 'unable',
+          'waistHipRatio': null,
+        };
+        final saved = await store.upsertCollector(
+          _submission(
+            id: 'unable-v3',
+            key: 'unable-v3-key',
+            studyId: 'P002',
+            phone: '+919000000002',
+            questionnaire: unable,
+          ),
+        );
+        expect(saved['questionnaire']['hipMissingReason'], 'unable');
+      },
+    );
+
+    test(
       'accepts schema v2 missing measurements with reasons and null summaries',
       () async {
         final questionnaire = _validQuestionnaireV2()
@@ -727,108 +775,115 @@ void main() {
       },
     );
 
-    test('resolveClientKey enforces trusted loopback proxy and validates IPs', () {
-      final loopback = InternetAddress.loopbackIPv4;
-      final externalIp = InternetAddress('198.51.100.5');
+    test(
+      'resolveClientKey enforces trusted loopback proxy and validates IPs',
+      () {
+        final loopback = InternetAddress.loopbackIPv4;
+        final externalIp = InternetAddress('198.51.100.5');
 
-      // Forwarded addresses are ignored when connection is NOT from loopback
-      expect(
-        resolveClientKey(
-          remoteAddress: externalIp,
-          forwardedFor: '203.0.113.10',
-          realIp: '203.0.113.20',
-        ),
-        externalIp.address,
-      );
+        // Forwarded addresses are ignored when connection is NOT from loopback
+        expect(
+          resolveClientKey(
+            remoteAddress: externalIp,
+            forwardedFor: '203.0.113.10',
+            realIp: '203.0.113.20',
+          ),
+          externalIp.address,
+        );
 
-      // Malformed/non-IP values are ignored and fall back safely
-      expect(
-        resolveClientKey(
-          remoteAddress: loopback,
-          forwardedFor: 'spoofed-ip-1, bad*ip',
-        ),
-        loopback.address,
-      );
+        // Malformed/non-IP values are ignored and fall back safely
+        expect(
+          resolveClientKey(
+            remoteAddress: loopback,
+            forwardedFor: 'spoofed-ip-1, bad*ip',
+          ),
+          loopback.address,
+        );
 
-      // Valid client IP from loopback proxy is accepted
-      expect(
-        resolveClientKey(
-          remoteAddress: loopback,
-          forwardedFor: '203.0.113.10, 10.0.0.1',
-        ),
-        '203.0.113.10',
-      );
+        // Valid client IP from loopback proxy is accepted
+        expect(
+          resolveClientKey(
+            remoteAddress: loopback,
+            forwardedFor: '203.0.113.10, 10.0.0.1',
+          ),
+          '203.0.113.10',
+        );
 
-      // Forwarded loopback IP is rejected (not an external client IP)
-      expect(
-        resolveClientKey(
-          remoteAddress: loopback,
-          forwardedFor: '127.0.0.1',
-        ),
-        loopback.address,
-      );
+        // Forwarded loopback IP is rejected (not an external client IP)
+        expect(
+          resolveClientKey(remoteAddress: loopback, forwardedFor: '127.0.0.1'),
+          loopback.address,
+        );
 
-      // X-Real-IP is used when X-Forwarded-For is absent or empty
-      expect(
-        resolveClientKey(
-          remoteAddress: loopback,
-          realIp: '203.0.113.20',
-        ),
-        '203.0.113.20',
-      );
-    });
+        // X-Real-IP is used when X-Forwarded-For is absent or empty
+        expect(
+          resolveClientKey(remoteAddress: loopback, realIp: '203.0.113.20'),
+          '203.0.113.20',
+        );
+      },
+    );
 
-    test('different forwarded client IPs have independent rate-limiting buckets', () async {
-      const clientIp1 = '203.0.113.100';
-      const clientIp2 = '203.0.113.101';
+    test(
+      'different forwarded client IPs have independent rate-limiting buckets',
+      () async {
+        const clientIp1 = '203.0.113.100';
+        const clientIp2 = '203.0.113.101';
 
-      // clientIp1 exhausts attempts (20 failures -> 401, 21st -> 429)
-      for (var attempt = 1; attempt <= 21; attempt++) {
-        final request = await client.getUrl(
+        // clientIp1 exhausts attempts (20 failures -> 401, 21st -> 429)
+        for (var attempt = 1; attempt <= 21; attempt++) {
+          final request = await client.getUrl(
+            Uri.parse('http://127.0.0.1:${server.port}/health'),
+          );
+          request.headers
+            ..set('x-forwarded-proto', 'https')
+            ..set('x-forwarded-for', clientIp1)
+            ..set('x-local-sync-key', 'incorrect-public-key');
+          final response = await request.close();
+          expect(
+            response.statusCode,
+            attempt <= 20
+                ? HttpStatus.unauthorized
+                : HttpStatus.tooManyRequests,
+          );
+          await response.drain<void>();
+        }
+
+        // clientIp2 is NOT throttled by clientIp1's failures
+        final request2 = await client.getUrl(
           Uri.parse('http://127.0.0.1:${server.port}/health'),
         );
-        request.headers
+        request2.headers
           ..set('x-forwarded-proto', 'https')
-          ..set('x-forwarded-for', clientIp1)
+          ..set('x-forwarded-for', clientIp2)
           ..set('x-local-sync-key', 'incorrect-public-key');
-        final response = await request.close();
-        expect(
-          response.statusCode,
-          attempt <= 20 ? HttpStatus.unauthorized : HttpStatus.tooManyRequests,
-        );
-        await response.drain<void>();
-      }
+        final response2 = await request2.close();
+        expect(response2.statusCode, HttpStatus.unauthorized);
+        await response2.drain<void>();
+      },
+    );
 
-      // clientIp2 is NOT throttled by clientIp1's failures
-      final request2 = await client.getUrl(
-        Uri.parse('http://127.0.0.1:${server.port}/health'),
-      );
-      request2.headers
-        ..set('x-forwarded-proto', 'https')
-        ..set('x-forwarded-for', clientIp2)
-        ..set('x-local-sync-key', 'incorrect-public-key');
-      final response2 = await request2.close();
-      expect(response2.statusCode, HttpStatus.unauthorized);
-      await response2.drain<void>();
-    });
-
-    test('spoofed non-IP forwarded headers do not bypass rate limiting', () async {
-      for (var attempt = 1; attempt <= 21; attempt++) {
-        final request = await client.getUrl(
-          Uri.parse('http://127.0.0.1:${server.port}/health'),
-        );
-        request.headers
-          ..set('x-forwarded-proto', 'https')
-          ..set('x-forwarded-for', 'spoofed-random-$attempt')
-          ..set('x-local-sync-key', 'incorrect-public-key');
-        final response = await request.close();
-        expect(
-          response.statusCode,
-          attempt <= 20 ? HttpStatus.unauthorized : HttpStatus.tooManyRequests,
-        );
-        await response.drain<void>();
-      }
-    });
+    test(
+      'spoofed non-IP forwarded headers do not bypass rate limiting',
+      () async {
+        for (var attempt = 1; attempt <= 21; attempt++) {
+          final request = await client.getUrl(
+            Uri.parse('http://127.0.0.1:${server.port}/health'),
+          );
+          request.headers
+            ..set('x-forwarded-proto', 'https')
+            ..set('x-forwarded-for', 'spoofed-random-$attempt')
+            ..set('x-local-sync-key', 'incorrect-public-key');
+          final response = await request.close();
+          expect(
+            response.statusCode,
+            attempt <= 20
+                ? HttpStatus.unauthorized
+                : HttpStatus.tooManyRequests,
+          );
+          await response.drain<void>();
+        }
+      },
+    );
   });
 
   group('HTTP Server multi-collector authentication & authorization', () {
@@ -1571,12 +1626,7 @@ void main() {
     });
 
     test('rejects invalid studyId formats with 400', () async {
-      for (final invalidId in [
-        'INVALID',
-        'P01',
-        'C1-000001',
-        'C01-12345',
-      ]) {
+      for (final invalidId in ['INVALID', 'P01', 'C1-000001', 'C01-12345']) {
         final response = await http.post(
           Uri.parse('$baseUrl/records'),
           headers: {

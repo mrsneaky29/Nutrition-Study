@@ -93,9 +93,27 @@ class _AdminEntryAppState extends State<_AdminEntryApp> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    'Vivayu',
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                  Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.asset(
+                          'web/icons/Vivayu-192.png',
+                          width: 44,
+                          height: 44,
+                          fit: BoxFit.cover,
+                          semanticLabel: 'Vivayu logo',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Text(
+                        'Vivayu',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   const Text('Administrator sign in'),

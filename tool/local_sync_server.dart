@@ -2046,10 +2046,10 @@ void _validateQuestionnaire(Object? value) {
   }
   final questionnaire = Map<String, dynamic>.from(value);
   final version = questionnaire['schemaVersion'] ?? 1;
-  if (version is! int || (version != 1 && version != 2)) {
+  if (version is! int || (version != 1 && version != 2 && version != 3)) {
     throw ApiException(
       HttpStatus.badRequest,
-      'questionnaire.schemaVersion must be 1 or 2.',
+      'questionnaire.schemaVersion must be 1, 2 or 3.',
     );
   }
   const requiredText = {
@@ -2069,7 +2069,12 @@ void _validateQuestionnaire(Object? value) {
     'sleepHours',
     'weeklyActiveMinutes',
   };
-  const derivedNumbers = {'bmi', 'averageSystolic', 'averageDiastolic'};
+  final derivedNumbers = {
+    'bmi',
+    'averageSystolic',
+    'averageDiastolic',
+    if (version == 3) 'waistHipRatio',
+  };
   const measurementFields = {
     'heightCm',
     'weightKg',
@@ -2079,6 +2084,10 @@ void _validateQuestionnaire(Object? value) {
     'bpTwoSystolic',
     'bpTwoDiastolic',
   };
+  final currentMeasurementFields = {
+    ...measurementFields,
+    if (version == 3) 'hipCm',
+  };
   const missingReasonFields = {
     'heightMissingReason',
     'weightMissingReason',
@@ -2086,12 +2095,16 @@ void _validateQuestionnaire(Object? value) {
     'bpOneMissingReason',
     'bpTwoMissingReason',
   };
+  final currentMissingReasonFields = {
+    ...missingReasonFields,
+    if (version == 3) 'hipMissingReason',
+  };
   final allowed = {
     ...requiredText,
     ...requiredNumbers,
     ...derivedNumbers,
-    ...measurementFields,
-    ...missingReasonFields,
+    ...currentMeasurementFields,
+    ...currentMissingReasonFields,
     'schemaVersion',
     'tobaccoUse',
     'tobaccoType',
@@ -2107,7 +2120,7 @@ void _validateQuestionnaire(Object? value) {
     ...requiredText,
     ...requiredNumbers,
     ...derivedNumbers,
-    ...measurementFields,
+    ...currentMeasurementFields,
   };
   if (questionnaire.keys.any((key) => !allowed.contains(key)) ||
       !questionnaire.keys.toSet().containsAll(requiredFields)) {
@@ -2143,7 +2156,7 @@ void _validateQuestionnaire(Object? value) {
       'questionnaire values are outside allowed ranges.',
     );
   }
-  final isV2 = version == 2;
+  final allowsMissing = version >= 2;
   void validateOptionalMeasurement(String field, String reasonField) {
     final measurement = questionnaire[field];
     final reason = questionnaire[reasonField];
@@ -2154,7 +2167,7 @@ void _validateQuestionnaire(Object? value) {
       );
     }
     if (measurement == null) {
-      if (!isV2 || (reason != 'unable' && reason != 'declined')) {
+      if (!allowsMissing || (reason != 'unable' && reason != 'declined')) {
         throw ApiException(
           HttpStatus.badRequest,
           'questionnaire.$reasonField must be unable or declined when $field is missing.',
@@ -2173,6 +2186,9 @@ void _validateQuestionnaire(Object? value) {
   validateOptionalMeasurement('heightCm', 'heightMissingReason');
   validateOptionalMeasurement('weightKg', 'weightMissingReason');
   validateOptionalMeasurement('waistCm', 'waistMissingReason');
+  if (version == 3) {
+    validateOptionalMeasurement('hipCm', 'hipMissingReason');
+  }
 
   void validateBloodPressurePair({
     required String systolicField,
@@ -2189,7 +2205,7 @@ void _validateQuestionnaire(Object? value) {
       );
     }
     if (systolic == null || diastolic == null) {
-      if (!isV2 ||
+      if (!allowsMissing ||
           systolic != null ||
           diastolic != null ||
           (reason != 'unable' && reason != 'declined')) {
@@ -2227,6 +2243,9 @@ void _validateQuestionnaire(Object? value) {
       (questionnaire['activeMinutesPerDay'] as num);
   final height = questionnaire['heightCm'] as num?;
   final weight = questionnaire['weightKg'] as num?;
+  final waist = questionnaire['waistCm'] as num?;
+  final hip = version == 3 ? questionnaire['hipCm'] as num? : null;
+  final waistHipRatio = waist == null || hip == null ? null : waist / hip;
   final bmi = height == null || weight == null
       ? null
       : weight / ((height / 100) * (height / 100));
@@ -2247,6 +2266,8 @@ void _validateQuestionnaire(Object? value) {
 
   if (differs(questionnaire['weeklyActiveMinutes'], weekly) ||
       differs(questionnaire['bmi'], bmi) ||
+      (version == 3 &&
+          differs(questionnaire['waistHipRatio'], waistHipRatio)) ||
       differs(questionnaire['averageSystolic'], averageSystolic) ||
       differs(questionnaire['averageDiastolic'], averageDiastolic)) {
     throw ApiException(
@@ -2258,8 +2279,8 @@ void _validateQuestionnaire(Object? value) {
     ...requiredText,
     ...requiredNumbers,
     ...derivedNumbers,
-    ...measurementFields,
-    ...missingReasonFields,
+    ...currentMeasurementFields,
+    ...currentMissingReasonFields,
     'schemaVersion',
   })) {
     final item = questionnaire[field];

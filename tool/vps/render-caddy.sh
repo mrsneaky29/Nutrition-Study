@@ -23,6 +23,8 @@ $api_host {
 $admin_host {
   encode zstd gzip
   root * $admin_root
+  @admin_shell path / /index.html /flutter_bootstrap.js /flutter_service_worker.js
+  header @admin_shell Cache-Control "no-cache, no-store, must-revalidate"
   try_files {path} /index.html
   file_server
 }

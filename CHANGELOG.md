@@ -6,6 +6,15 @@ For current operating instructions, start with [README.md](README.md).
 
 ## Important version distinctions
 
+- **Vivayu +8.1** adds hip circumference (or a missing-measurement reason),
+  a calculated waist-to-hip ratio, and full interview answers in admin record
+  details. Android package metadata is `1.0.1+9`; the visible name remains
+  `Vivayu`. The server accepts questionnaire schema 3 and continues to accept
+  versions 1 and 2. Deploy the server before the new APK. Earlier records do
+  not acquire inferred hip values. The admin header and sign-in now use the
+  existing Vivayu hand logo, and admin web builds retire older offline caches
+  so a stale +6.3 page cannot mask the updated details.
+
 - **+6.3 is the admin-console logout and safe malformed-record update.** Valid
   records stay visible with an explicit malformed-record count. Edits, archive,
   and export pause until repair; raw validation values are not exposed. Sign out

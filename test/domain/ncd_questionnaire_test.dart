@@ -43,16 +43,74 @@ void main() {
     'accepts pre-versioned records but rejects an unknown future schema',
     () {
       final original = questionnaire.toMap();
-      expect(original['schemaVersion'], NcdQuestionnaire.schemaVersion);
+      expect(original['schemaVersion'], 2);
       final legacy = Map<String, Object?>.from(original)
         ..remove('schemaVersion');
       expect(NcdQuestionnaire.fromMap(legacy), isNotNull);
       expect(
-        NcdQuestionnaire.fromMap({...original, 'schemaVersion': 3}),
+        NcdQuestionnaire.fromMap({...original, 'schemaVersion': 4}),
         isNull,
       );
     },
   );
+
+  test('v3 records hip circumference and calculates waist-to-hip ratio', () {
+    const current = NcdQuestionnaire(
+      version: NcdQuestionnaire.schemaVersion,
+      studySite: 'community_clinic',
+      age: 34,
+      sex: 'female',
+      education: 'secondary',
+      employment: 'employed',
+      fruitFrequency: 'daily',
+      vegetableFrequency: 'daily',
+      sugaryDrinkFrequency: 'never',
+      processedFoodFrequency: 'never',
+      activeDaysPerWeek: 5,
+      activeMinutesPerDay: 30,
+      sleepHours: 7,
+      heightCm: 160,
+      weightKg: 64,
+      waistCm: 80,
+      hipCm: 100,
+      bpOneSystolic: 120,
+      bpOneDiastolic: 80,
+      bpTwoSystolic: 124,
+      bpTwoDiastolic: 78,
+    );
+    expect(current.waistHipRatio, 0.8);
+    expect(current.toMap()['schemaVersion'], 3);
+    expect(current.toMap()['waistHipRatio'], 0.8);
+    expect(current.toCsvRow()['ncd_hip_cm'], '100.0');
+    expect(current.toCsvRow()['ncd_waist_hip_ratio'], '0.8');
+    expect(NcdQuestionnaire.fromMap(current.toMap())?.waistHipRatio, 0.8);
+    expect(
+      NcdQuestionnaire.fromMap({...current.toMap(), 'waistHipRatio': 0.9}),
+      isNull,
+    );
+    expect(
+      NcdQuestionnaire.fromMap({...current.toMap()}..remove('hipCm')),
+      isNull,
+    );
+
+    final unable = NcdQuestionnaire.fromMap({
+      ...current.toMap(),
+      'hipCm': null,
+      'hipMissingReason': 'unable',
+      'waistHipRatio': null,
+    });
+    expect(unable?.hipMissingReason, 'unable');
+    expect(unable?.waistHipRatio, isNull);
+    expect(unable?.toCsvRow()['ncd_waist_hip_ratio'], '');
+    expect(
+      NcdQuestionnaire.fromMap({
+        ...current.toMap(),
+        'hipCm': null,
+        'waistHipRatio': null,
+      }),
+      isNull,
+    );
+  });
 
   test('missing measurements carry reasons and leave derived values blank', () {
     final map = {
@@ -109,10 +167,7 @@ void main() {
       NcdQuestionnaire.fromMap({...original, 'bpOneSystolic': 120.0}),
       isNotNull,
     );
-    expect(
-      NcdQuestionnaire.fromMap({...original, 'age': 34.5}),
-      isNull,
-    );
+    expect(NcdQuestionnaire.fromMap({...original, 'age': 34.5}), isNull);
   });
 
   test(

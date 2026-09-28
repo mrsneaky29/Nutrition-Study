@@ -34,6 +34,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
   final _height = TextEditingController();
   final _weight = TextEditingController();
   final _waist = TextEditingController();
+  final _hip = TextEditingController();
   final _bp1s = TextEditingController();
   final _bp1d = TextEditingController();
   final _bp2s = TextEditingController();
@@ -59,6 +60,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
   String? _heightMissingReason;
   String? _weightMissingReason;
   String? _waistMissingReason;
+  String? _hipMissingReason;
   String? _bpOneMissingReason;
   String? _bpTwoMissingReason;
 
@@ -89,6 +91,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
     _heightMissingReason = choice('heightMissingReason');
     _weightMissingReason = choice('weightMissingReason');
     _waistMissingReason = choice('waistMissingReason');
+    _hipMissingReason = choice('hipMissingReason');
     _bpOneMissingReason = choice('bpOneMissingReason');
     _bpTwoMissingReason = choice('bpTwoMissingReason');
     _measurements = draft['measurements'] == true;
@@ -100,6 +103,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
       _height: 'height',
       _weight: 'weight',
       _waist: 'waist',
+      _hip: 'hip',
       _bp1s: 'bp1s',
       _bp1d: 'bp1d',
       _bp2s: 'bp2s',
@@ -142,6 +146,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
     'height': _height.text,
     'weight': _weight.text,
     'waist': _waist.text,
+    'hip': _hip.text,
     'bp1s': _bp1s.text,
     'bp1d': _bp1d.text,
     'bp2s': _bp2s.text,
@@ -149,6 +154,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
     'heightMissingReason': _heightMissingReason,
     'weightMissingReason': _weightMissingReason,
     'waistMissingReason': _waistMissingReason,
+    'hipMissingReason': _hipMissingReason,
     'bpOneMissingReason': _bpOneMissingReason,
     'bpTwoMissingReason': _bpTwoMissingReason,
   });
@@ -163,6 +169,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
       _height,
       _weight,
       _waist,
+      _hip,
       _bp1s,
       _bp1d,
       _bp2s,
@@ -182,6 +189,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
     if (!(_measurementsKey.currentState?.validate() ?? false)) return;
     widget.onComplete?.call(
       NcdQuestionnaire(
+        version: NcdQuestionnaire.schemaVersion,
         studySite: _site!,
         age: int.parse(_age.text),
         sex: _sex!,
@@ -201,6 +209,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
             ? double.parse(_weight.text)
             : null,
         waistCm: _waistMissingReason == null ? double.parse(_waist.text) : null,
+        hipCm: _hipMissingReason == null ? double.parse(_hip.text) : null,
         bpOneSystolic: _bpOneMissingReason == null
             ? int.parse(_bp1s.text)
             : null,
@@ -216,6 +225,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
         heightMissingReason: _heightMissingReason,
         weightMissingReason: _weightMissingReason,
         waistMissingReason: _waistMissingReason,
+        hipMissingReason: _hipMissingReason,
         bpOneMissingReason: _bpOneMissingReason,
         bpTwoMissingReason: _bpTwoMissingReason,
         tobaccoUse: _tobacco,
@@ -446,6 +456,14 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
               _waist,
               _waistMissingReason,
               (v) => _setDraft(() => _waistMissingReason = v),
+              min: 30,
+              max: 250,
+            ),
+            _measurementDecimal(
+              'Hip circumference (cm)',
+              _hip,
+              _hipMissingReason,
+              (v) => _setDraft(() => _hipMissingReason = v),
               min: 30,
               max: 250,
             ),
