@@ -11,6 +11,7 @@ abstract final class PresentationTheme {
     );
     return ThemeData(
       useMaterial3: true,
+      fontFamilyFallback: const ['NotoSansTelugu'],
       colorScheme: scheme,
       scaffoldBackgroundColor: const Color(0xFFF3F7F2),
       appBarTheme: AppBarTheme(
@@ -25,6 +26,8 @@ abstract final class PresentationTheme {
           borderRadius: BorderRadius.all(Radius.circular(14)),
         ),
         contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        errorMaxLines: 5,
+        helperMaxLines: 4,
       ),
       cardTheme: const CardThemeData(
         margin: EdgeInsets.zero,

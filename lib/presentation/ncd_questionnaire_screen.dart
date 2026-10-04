@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../l10n/collector_language.dart';
+
 import 'package:flutter/services.dart';
 
 import '../domain/ncd_questionnaire.dart';
@@ -339,7 +342,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
           _section(context, 'Diet, activity and sleep', [
             const Padding(
               padding: EdgeInsets.only(bottom: 8),
-              child: Text(
+              child: CollectorText(
                 'In the past 7 days, how often did the participant have:',
               ),
             ),
@@ -383,7 +386,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
           _section(context, 'Known diagnosis', [
             const Padding(
               padding: EdgeInsets.only(bottom: 8),
-              child: Text(
+              child: CollectorText(
                 'Has a doctor or health professional ever told the participant they have:',
               ),
             ),
@@ -415,7 +418,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
           const SizedBox(height: 8),
           FilledButton(
             onPressed: _next,
-            child: const Text('Continue to measurements'),
+            child: const CollectorText('Continue to measurements'),
           ),
           const SizedBox(height: 32),
         ],
@@ -469,7 +472,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
             ),
           ]),
           _section(context, 'Blood pressure', [
-            const Text('Record two seated readings in mmHg.'),
+            const CollectorText('Record two seated readings in mmHg.'),
             const SizedBox(height: 12),
             _bloodPressureMeasurement(
               'Reading 1',
@@ -488,7 +491,7 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
           ]),
           FilledButton(
             onPressed: _complete,
-            child: const Text('Review questionnaire'),
+            child: const CollectorText('Review questionnaire'),
           ),
           const SizedBox(height: 32),
         ],
@@ -503,7 +506,10 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(title, style: Theme.of(context).textTheme.titleLarge),
+              CollectorText(
+                title,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
               const SizedBox(height: 16),
               ...children,
             ],
@@ -518,12 +524,20 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
   ) => Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: DropdownButtonFormField<String>(
+      errorBuilder: (context, error) => CollectorText(error),
+      isExpanded: true,
+      itemHeight: null,
       initialValue: reason ?? 'recorded',
-      decoration: InputDecoration(labelText: '$label status'),
+      decoration: InputDecoration(
+        labelText: collectorText(context, '$label status'),
+      ),
       items: const [
-        DropdownMenuItem(value: 'recorded', child: Text('Measured')),
-        DropdownMenuItem(value: 'unable', child: Text('Unable to measure')),
-        DropdownMenuItem(value: 'declined', child: Text('Declined')),
+        DropdownMenuItem(value: 'recorded', child: CollectorText('Measured')),
+        DropdownMenuItem(
+          value: 'unable',
+          child: CollectorText('Unable to measure'),
+        ),
+        DropdownMenuItem(value: 'declined', child: CollectorText('Declined')),
       ],
       onChanged: (value) => changed(value == 'recorded' ? null : value),
     ),
@@ -596,14 +610,16 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
   ) => Padding(
     padding: const EdgeInsets.only(bottom: 16),
     child: DropdownButtonFormField<String>(
+      errorBuilder: (context, error) => CollectorText(error),
       isExpanded: true,
+      itemHeight: null,
       initialValue: value,
-      decoration: InputDecoration(labelText: label),
+      decoration: InputDecoration(labelText: collectorText(context, label)),
       items: options.entries
           .map(
             (item) => DropdownMenuItem(
               value: item.key,
-              child: Text(item.value, overflow: TextOverflow.ellipsis),
+              child: CollectorText(item.value),
             ),
           )
           .toList(),
@@ -619,21 +635,26 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
   ) => Padding(
     padding: const EdgeInsets.only(bottom: 16),
     child: DropdownButtonFormField<String>(
+      errorBuilder: (context, error) => CollectorText(error),
       isExpanded: true,
+      itemHeight: null,
       initialValue: value,
       decoration: InputDecoration(
-        labelText: label,
-        helperText: 'Optional — leave blank if declined.',
+        labelText: collectorText(context, label),
+        helperText: collectorText(
+          context,
+          'Optional — leave blank if declined.',
+        ),
       ),
       items: [
         const DropdownMenuItem<String>(
           value: null,
-          child: Text('Not answered', overflow: TextOverflow.ellipsis),
+          child: CollectorText('Not answered'),
         ),
         ...options.entries.map(
           (item) => DropdownMenuItem(
             value: item.key,
-            child: Text(item.value, overflow: TextOverflow.ellipsis),
+            child: CollectorText(item.value),
           ),
         ),
       ],
@@ -650,10 +671,16 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
   }) => Padding(
     padding: const EdgeInsets.only(bottom: 16),
     child: TextFormField(
+      errorBuilder: (context, error) => CollectorText(error),
       controller: controller,
       keyboardType: TextInputType.number,
       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-      decoration: InputDecoration(labelText: label, helperText: helper),
+      decoration: InputDecoration(
+        labelText: collectorText(context, label),
+        helperText: helper == null ? null : collectorText(context, helper),
+        errorMaxLines: 4,
+        helperMaxLines: 3,
+      ),
       validator: (v) {
         final n = int.tryParse(v ?? '');
         if (n == null || n < min || (max != null && n > max)) {
@@ -671,9 +698,13 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
   }) => Padding(
     padding: const EdgeInsets.only(bottom: 16),
     child: TextFormField(
+      errorBuilder: (context, error) => CollectorText(error),
       controller: controller,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      decoration: InputDecoration(labelText: label),
+      decoration: InputDecoration(
+        labelText: collectorText(context, label),
+        errorMaxLines: 4,
+      ),
       validator: (v) {
         final n = double.tryParse(v ?? '');
         return n == null || !n.isFinite || n < min || (max != null && n > max)

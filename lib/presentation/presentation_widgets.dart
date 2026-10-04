@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/collector_language.dart';
+
 import 'view_models.dart';
 
 class ResponsivePage extends StatelessWidget {
@@ -31,10 +33,16 @@ class ResponsivePage extends StatelessWidget {
 }
 
 class PageHeading extends StatelessWidget {
-  const PageHeading({required this.title, this.subtitle, super.key});
+  const PageHeading({
+    required this.title,
+    this.subtitle,
+    this.translateTitle = true,
+    super.key,
+  });
 
   final String title;
   final String? subtitle;
+  final bool translateTitle;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -42,10 +50,16 @@ class PageHeading extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: Theme.of(context).textTheme.headlineMedium),
+        Text(
+          translateTitle ? collectorText(context, title) : title,
+          style: Theme.of(context).textTheme.headlineMedium,
+        ),
         if (subtitle != null) ...[
           const SizedBox(height: 8),
-          Text(subtitle!, style: Theme.of(context).textTheme.bodyLarge),
+          CollectorText(
+            subtitle!,
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
         ],
       ],
     ),
@@ -67,7 +81,7 @@ class StatusChip extends StatelessWidget {
     };
     return Chip(
       avatar: Icon(Icons.circle, color: color, size: 12),
-      label: Text(state.label),
+      label: CollectorText(state.label),
     );
   }
 }
@@ -95,9 +109,9 @@ class EmptyState extends StatelessWidget {
         children: [
           Icon(icon, size: 48, color: Theme.of(context).colorScheme.primary),
           const SizedBox(height: 16),
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
+          CollectorText(title, style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
-          Text(message, textAlign: TextAlign.center),
+          CollectorText(message, textAlign: TextAlign.center),
           if (action != null) ...[const SizedBox(height: 20), action!],
         ],
       ),

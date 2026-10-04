@@ -476,7 +476,7 @@ void main() {
 
     // Submission detail screen shows badge, conflict warning, explanation, and action buttons
     expect(find.text('Sync Conflict - Review Required'), findsWidgets);
-    expect(find.textContaining('HTTP 409'), findsOneWidget);
+    expect(find.textContaining('Contact the administrator to resolve the sync conflict'), findsOneWidget);
     expect(find.textContaining('CONF-409-TEST'), findsWidgets);
     expect(find.text('Review Conflict'), findsOneWidget);
     expect(find.text('Retry Upload'), findsOneWidget);

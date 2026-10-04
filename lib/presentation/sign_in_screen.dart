@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../l10n/collector_language.dart';
+
 import 'package:flutter/services.dart';
 
 import 'app_strings.dart';
@@ -109,9 +112,9 @@ class _SignInScreenState extends State<SignInScreen> {
         case QrScannerSuccess(:final payload):
           final resolvedServer = payload.resolveServerUrl(serverUrl);
           if (!HttpLocalRecordSyncClient.isValidApiBaseUrl(
-            resolvedServer,
-            requireHttps: true,
-          ) ||
+                resolvedServer,
+                requireHttps: true,
+              ) ||
               (payload.serverUrl != null &&
                   !_sameServer(payload.serverUrl!, serverUrl))) {
             setState(() {
@@ -127,17 +130,30 @@ class _SignInScreenState extends State<SignInScreen> {
             ),
           );
         case QrScannerCancelled():
-          setState(() => _scanMessage = 'QR sign-in was cancelled. Scan your setup QR code to continue.');
+          setState(
+            () => _scanMessage = 'QR sign-in was cancelled. Scan your setup QR code to continue.',
+          );
         case QrScannerPermissionDenied():
-          setState(() => _scanMessage = 'Camera access is needed to scan your setup QR code. Allow camera access in app settings.');
+          setState(
+            () => _scanMessage = 'Camera access is needed to scan your setup QR code. Allow camera access in app settings.',
+          );
         case QrScannerInvalid():
-          setState(() => _scanMessage = 'The QR code is invalid. Ask your administrator for a new one.');
+          setState(
+            () => _scanMessage =
+                'The QR code is invalid. Ask your administrator for a new one.',
+          );
         case QrScannerError():
-          setState(() => _scanMessage = 'The camera is unavailable. Check camera access and try again.');
+          setState(
+            () => _scanMessage =
+                'The camera is unavailable. Check camera access and try again.',
+          );
       }
     } catch (_) {
       if (mounted) {
-        setState(() => _scanMessage = 'The camera is unavailable. Check camera access and try again.');
+        setState(
+          () => _scanMessage =
+              'The camera is unavailable. Check camera access and try again.',
+        );
       }
     } finally {
       if (mounted) setState(() => _isScanning = false);
@@ -145,9 +161,8 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   bool _sameServer(String first, String second) {
-    Uri? uri(String value) => Uri.tryParse(
-      value.trim().replaceFirst(RegExp(r'/+$'), ''),
-    );
+    Uri? uri(String value) =>
+        Uri.tryParse(value.trim().replaceFirst(RegExp(r'/+$'), ''));
     final left = uri(first);
     final right = uri(second);
     if (left == null || right == null) return false;
@@ -178,13 +193,13 @@ class _SignInScreenState extends State<SignInScreen> {
                       color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(height: 16),
-                    Text(
+                    CollectorText(
                       AppStrings.appName,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
                     const SizedBox(height: 8),
-                    Text(
+                    CollectorText(
                       _qrOnlyProduction
                           ? 'Scan the collector setup QR code provided by your administrator to sign in.'
                           : widget.showLocalSetup
@@ -194,32 +209,41 @@ class _SignInScreenState extends State<SignInScreen> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 28),
-                    if (!_qrOnlyProduction) TextFormField(
-                      controller: _collectorCode,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      autocorrect: false,
-                      decoration: const InputDecoration(
-                        labelText: 'Collector number',
-                        hintText: '1',
+                    if (!_qrOnlyProduction)
+                      TextFormField(
+                        errorBuilder: (context, error) => CollectorText(error),
+                        controller: _collectorCode,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        autocorrect: false,
+                        decoration: InputDecoration(
+                          labelText: collectorText(context, 'Collector number'),
+                          hintText: collectorText(context, '1'),
+                        ),
+                        validator: (value) =>
+                            !RegExp(r'^[1-9]\d*$').hasMatch(value?.trim() ?? '')
+                            ? 'Enter a number such as 1.'
+                            : null,
+                        onFieldSubmitted: (_) => _submit(),
                       ),
-                      validator: (value) =>
-                          !RegExp(r'^[1-9]\d*$').hasMatch(value?.trim() ?? '')
-                          ? 'Enter a number such as 1.'
-                          : null,
-                      onFieldSubmitted: (_) => _submit(),
-                    ),
                     if (widget.showLocalSetup && !_qrOnlyProduction) ...[
                       const SizedBox(height: 16),
                       if (!(widget.requireHttps &&
                           widget.initialServerUrl.isNotEmpty))
                         TextFormField(
+                          errorBuilder: (context, error) =>
+                              CollectorText(error),
                           controller: _serverUrl,
                           keyboardType: TextInputType.url,
                           decoration: InputDecoration(
-                            labelText: widget.requireHttps
-                                ? 'Server address'
-                                : 'Home server address',
+                            labelText: collectorText(
+                              context,
+                              widget.requireHttps
+                                  ? 'Server address'
+                                  : 'Home server address',
+                            ),
                             hintText: widget.requireHttps
                                 ? 'https://server.example.com'
                                 : 'http://192.168.1.5:8787',
@@ -235,11 +259,15 @@ class _SignInScreenState extends State<SignInScreen> {
                         ),
                       const SizedBox(height: 16),
                       TextFormField(
+                        errorBuilder: (context, error) => CollectorText(error),
                         controller: _accessKey,
                         obscureText: true,
                         autocorrect: false,
-                        decoration: const InputDecoration(
-                          labelText: 'Collector access key',
+                        decoration: InputDecoration(
+                          labelText: collectorText(
+                            context,
+                            'Collector access key',
+                          ),
                         ),
                         validator: (value) => (value?.trim().length ?? 0) < 16
                             ? 'Enter your collector access key.'
@@ -253,14 +281,18 @@ class _SignInScreenState extends State<SignInScreen> {
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(Icons.qr_code_scanner),
-                        label: Text(_isScanning ? 'Scanning…' : 'Scan sign-in QR'),
+                        label: CollectorText(
+                          _isScanning ? 'Scanning…' : 'Scan sign-in QR',
+                        ),
                       ),
                       if (_scanMessage != null) ...[
                         const SizedBox(height: 12),
-                        Text(
+                        CollectorText(
                           _scanMessage!,
                           key: const Key('qr-sign-in-message'),
                           textAlign: TextAlign.center,
@@ -271,10 +303,11 @@ class _SignInScreenState extends State<SignInScreen> {
                       ],
                     ],
                     const SizedBox(height: 24),
-                    if (!_qrOnlyProduction) FilledButton(
-                      onPressed: _submit,
-                      child: const Text('Continue'),
-                    ),
+                    if (!_qrOnlyProduction)
+                      FilledButton(
+                        onPressed: _submit,
+                        child: const CollectorText('Continue'),
+                      ),
                   ],
                 ),
               ),

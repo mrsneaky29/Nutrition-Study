@@ -4,6 +4,9 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+
+import 'l10n/collector_language.dart';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
@@ -444,7 +447,9 @@ class _LocalDemoAppState extends State<LocalDemoApp>
 
     if (number == null || number < BigInt.one) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Collector number must be positive.')),
+        const SnackBar(
+          content: CollectorText('Collector number must be positive.'),
+        ),
       );
       return;
     }
@@ -484,8 +489,13 @@ class _LocalDemoAppState extends State<LocalDemoApp>
         unawaited(_retryPendingSubmissions());
       } catch (error) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Sign-in failed: $error')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: CollectorText(
+              'Sign-in failed. Check your setup code and connection, then try again.',
+            ),
+          ),
+        );
       } finally {
         if (mounted) setState(() => _isSigningIn = false);
       }
@@ -502,7 +512,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
           _provisionedCollectorCode;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: CollectorText(
             'This phone is locked to Collector $lockedNum. You cannot switch collector accounts.',
           ),
         ),
@@ -534,13 +544,13 @@ class _LocalDemoAppState extends State<LocalDemoApp>
             'Collector access could not be verified. Try again.',
         };
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(message)));
+            .showSnackBar(SnackBar(content: CollectorText(message)));
         return;
       } catch (_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
+            content: CollectorText(
               'Could not connect. Check the internet and try again.',
             ),
           ),
@@ -594,13 +604,13 @@ class _LocalDemoAppState extends State<LocalDemoApp>
               children: [
                 const Icon(Icons.phonelink_erase_outlined, size: 48),
                 const SizedBox(height: 16),
-                const Text(
+                const CollectorText(
                   'Saved submissions could not be opened',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                const CollectorText(
                   'The app has not discarded or replaced the saved data.',
                   textAlign: TextAlign.center,
                 ),
@@ -608,7 +618,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
                 FilledButton.icon(
                   onPressed: _restoreRecords,
                   icon: const Icon(Icons.refresh),
-                  label: const Text('Try again'),
+                  label: const CollectorText('Try again'),
                 ),
               ],
             ),
@@ -645,7 +655,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
                 child: Card(
                   child: Padding(
                     padding: EdgeInsets.all(10),
-                    child: Text(
+                    child: CollectorText(
                       'LOCAL DEMO · enter your assigned collector number',
                       textAlign: TextAlign.center,
                     ),
@@ -870,7 +880,9 @@ class _LocalDemoAppState extends State<LocalDemoApp>
     final validPhone = RegExp(r'^(?:91)?[6-9]\d{9}$').hasMatch(phone);
     if (!validPhone) {
       ScaffoldMessenger.of(screenContext).showSnackBar(
-        const SnackBar(content: Text('Enter a valid Indian mobile number.')),
+        const SnackBar(
+          content: CollectorText('Enter a valid Indian mobile number.'),
+        ),
       );
       return;
     }
@@ -936,7 +948,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
         if (!screenContext.mounted) return;
         ScaffoldMessenger.of(screenContext).showSnackBar(
           const SnackBar(
-            content: Text(
+            content: CollectorText(
               'Could not reserve the visit. Check the internet and try again.',
             ),
           ),
@@ -956,7 +968,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
         if (!screenContext.mounted) return;
         ScaffoldMessenger.of(screenContext).showSnackBar(
           const SnackBar(
-            content: Text(
+            content: CollectorText(
               'This collector number signed in on another phone. Sign in again here to take over.',
             ),
           ),
@@ -1037,19 +1049,19 @@ class _LocalDemoAppState extends State<LocalDemoApp>
         final confirmed = await showDialog<bool>(
           context: screenContext,
           builder: (dialogContext) => AlertDialog(
-            title: const Text('Details do not match'),
-            content: const Text(
+            title: const CollectorText('Details do not match'),
+            content: const CollectorText(
               'This Study ID already has a different name or phone number. '
               'Please confirm the details with the participant.',
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Go back'),
+                child: const CollectorText('Go back'),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text('Details confirmed'),
+                child: const CollectorText('Details confirmed'),
               ),
             ],
           ),
@@ -1099,7 +1111,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
     if (matches.isEmpty) {
       ScaffoldMessenger.of(screenContext).showSnackBar(
         const SnackBar(
-          content: Text(
+          content: CollectorText(
             'No saved visit for this Study ID is available on this phone. '
             'Connect to the study archive or sync the phone that has its history.',
           ),
@@ -1122,7 +1134,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
         )) {
       ScaffoldMessenger.of(screenContext).showSnackBar(
         const SnackBar(
-          content: Text(
+          content: CollectorText(
             'Saved details for this Study ID do not agree. Check the study card and contact the supervisor before continuing.',
           ),
         ),
@@ -1174,19 +1186,19 @@ class _LocalDemoAppState extends State<LocalDemoApp>
     final resume = await showDialog<bool>(
       context: screenContext,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Visit already in progress'),
-        content: Text(
+        title: const CollectorText('Visit already in progress'),
+        content: CollectorText(
           '${selected.participant.name} has an unfinished Visit '
           '${selected.visitNumber}. Resume it before starting another visit.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+            child: const CollectorText('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Resume visit'),
+            child: const CollectorText('Resume visit'),
           ),
         ],
       ),
@@ -1226,7 +1238,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
         if (screenContext.mounted) {
           ScaffoldMessenger.of(screenContext).showSnackBar(
             const SnackBar(
-              content: Text(
+              content: CollectorText(
                 'Could not save an in-progress copy on this phone. The visit was not opened.',
               ),
             ),
@@ -1250,7 +1262,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
                   _draftStorageWarningShown = true;
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text(
+                      content: CollectorText(
                         'Could not save recent answers on this phone. Check storage before continuing.',
                       ),
                     ),
@@ -1289,7 +1301,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
       selected = await showDialog<_InProgressVisitDraft>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('Resume a saved visit'),
+          title: const CollectorText('Resume a saved visit'),
           content: SizedBox(
             width: double.maxFinite,
             child: ListView(
@@ -1298,7 +1310,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
                 for (final draft in drafts)
                   ListTile(
                     title: Text(draft.participant.name),
-                    subtitle: Text(
+                    subtitle: CollectorText(
                       '${draft.participant.studyId} · Visit ${draft.visitNumber}',
                     ),
                     onTap: () => Navigator.pop(dialogContext, draft),
@@ -1309,7 +1321,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: const CollectorText('Cancel'),
             ),
           ],
         ),
@@ -1371,13 +1383,13 @@ class _LocalDemoAppState extends State<LocalDemoApp>
   ) => showDialog<_ParticipantSelection>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: const Text('Choose participant'),
+      title: const CollectorText('Choose participant'),
       content: SizedBox(
         width: double.maxFinite,
         child: ListView(
           shrinkWrap: true,
           children: [
-            const Text(
+            const CollectorText(
               'This phone number may be shared. Check the participant’s '
               'study card or logbook before choosing a Study ID.',
             ),
@@ -1385,7 +1397,9 @@ class _LocalDemoAppState extends State<LocalDemoApp>
             for (final candidate in candidates)
               ListTile(
                 title: Text('${candidate.name} · ${candidate.studyId}'),
-                subtitle: Text('Next visit ${candidate.nextVisitNumber}'),
+                subtitle: CollectorText(
+                  'Next visit ${candidate.nextVisitNumber}',
+                ),
                 onTap: () => Navigator.pop(
                   dialogContext,
                   _ParticipantSelection(candidate),
@@ -1397,12 +1411,12 @@ class _LocalDemoAppState extends State<LocalDemoApp>
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialogContext),
-          child: const Text('Cancel'),
+          child: const CollectorText('Cancel'),
         ),
         TextButton(
           onPressed: () =>
               Navigator.pop(dialogContext, const _ParticipantSelection(null)),
-          child: const Text('New participant'),
+          child: const CollectorText('New participant'),
         ),
       ],
     ),
@@ -1491,7 +1505,9 @@ class _LocalDemoAppState extends State<LocalDemoApp>
       if (mounted) {
         if (record.syncState == ui.SyncState.synced) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Record synced successfully.')),
+            const SnackBar(
+              content: CollectorText('Record synced successfully.'),
+            ),
           );
         }
       }
@@ -1603,7 +1619,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text(
+                  content: CollectorText(
                     'This collector number signed in on another phone. Sign in again here to take over.',
                   ),
                 ),
@@ -1622,7 +1638,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text(
+                content: CollectorText(
                   'Sync conflict: entry is saved on this phone and needs admin review.',
                 ),
               ),
@@ -1916,7 +1932,7 @@ class _LocalVisitFlowState extends State<_LocalVisitFlow> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
+          content: CollectorText(
             'Could not save on this phone. Entry was not sent. Try again.',
           ),
         ),
@@ -1983,7 +1999,7 @@ class _ConflictBadge extends StatelessWidget {
           ),
           const SizedBox(width: 4),
           Flexible(
-            child: Text(
+            child: CollectorText(
               'Sync Conflict - Review Required',
               style: TextStyle(
                 fontSize: 12,
@@ -2025,18 +2041,18 @@ class _LocalVisitConfirmationScreen extends StatelessWidget {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Specify Study ID from card/logbook'),
+          title: const CollectorText('Specify Study ID from card/logbook'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
+              const CollectorText(
                 'If this participant was enrolled on another collector\'s phone, '
                 'enter their existing Study ID from their study card or logbook:',
               ),
               const SizedBox(height: 16),
               if (errorMessage != null) ...[
-                Text(
+                CollectorText(
                   errorMessage!,
                   style: TextStyle(
                     color: Theme.of(dialogContext).colorScheme.error,
@@ -2047,21 +2063,26 @@ class _LocalVisitConfirmationScreen extends StatelessWidget {
                 const SizedBox(height: 12),
               ],
               TextFormField(
+                errorBuilder: (context, error) => CollectorText(error),
                 controller: idController,
                 autofocus: true,
                 textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(
-                  labelText: 'Study ID from card/logbook',
-                  hintText: 'e.g. P001',
+                decoration: InputDecoration(
+                  labelText: collectorText(
+                    context,
+                    'Study ID from card/logbook',
+                  ),
+                  hintText: collectorText(context, 'e.g. P001'),
                 ),
               ),
               const SizedBox(height: 12),
               TextFormField(
+                errorBuilder: (context, error) => CollectorText(error),
                 controller: visitController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Visit number',
-                  hintText: '2',
+                decoration: InputDecoration(
+                  labelText: collectorText(context, 'Visit number'),
+                  hintText: collectorText(context, '2'),
                 ),
               ),
             ],
@@ -2069,7 +2090,7 @@ class _LocalVisitConfirmationScreen extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: const CollectorText('Cancel'),
             ),
             FilledButton(
               onPressed: () {
@@ -2094,7 +2115,7 @@ class _LocalVisitConfirmationScreen extends StatelessWidget {
                 onSpecifyExistingId(normalized, visit);
                 Navigator.pop(dialogContext);
               },
-              child: const Text('Confirm Study ID'),
+              child: const CollectorText('Confirm Study ID'),
             ),
           ],
         ),
@@ -2131,14 +2152,14 @@ class _LocalVisitConfirmationScreen extends StatelessWidget {
                     backgroundColor: Theme.of(context)
                         .colorScheme
                         .primaryContainer,
-                    child: Text('$proposedVisitNumber'),
+                    child: CollectorText('$proposedVisitNumber'),
                   ),
-                  title: Text(
+                  title: CollectorText(
                     proposedVisitNumber == 1
                         ? 'First visit'
                         : 'Visit $proposedVisitNumber',
                   ),
-                  subtitle: Text(
+                  subtitle: CollectorText(
                     proposedVisitNumber == 1
                         ? 'A new participant number has been assigned.'
                         : 'Updated automatically from this participant’s history.',
@@ -2148,14 +2169,14 @@ class _LocalVisitConfirmationScreen extends StatelessWidget {
                 OutlinedButton.icon(
                   onPressed: () => _showSpecifyDialog(context),
                   icon: const Icon(Icons.badge_outlined),
-                  label: const Text(
+                  label: const CollectorText(
                     'Specify existing Study ID (from card/logbook)',
                   ),
                 ),
                 const SizedBox(height: 20),
                 FilledButton(
                   onPressed: onConfirm,
-                  child: const Text('Confirm and continue'),
+                  child: const CollectorText('Confirm and continue'),
                 ),
               ],
             ),
@@ -2178,7 +2199,7 @@ class _DetailRow extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: Theme.of(context).textTheme.labelLarge),
+        CollectorText(label, style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 4),
         Text(value, style: Theme.of(context).textTheme.titleMedium),
       ],
@@ -2223,9 +2244,9 @@ class _LocalSubmissionsScreenState extends State<_LocalSubmissionsScreen> {
             subtitle: 'Entries created by your account.',
           ),
           TextField(
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               prefixIcon: Icon(Icons.search),
-              hintText: 'Search by name or Study ID',
+              hintText: collectorText(context, 'Search by name or Study ID'),
             ),
             onChanged: (value) => setState(() => _query = value.trim()),
           ),
@@ -2254,7 +2275,7 @@ class _LocalSubmissionsScreenState extends State<_LocalSubmissionsScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
+                                CollectorText(
                                   item.participant.name,
                                   style: Theme.of(context)
                                       .textTheme
@@ -2308,28 +2329,30 @@ class _LocalSubmissionDetailScreenState
       context: context,
       builder: (dialogContext) => AlertDialog(
         icon: const Icon(Icons.warning_amber_rounded, color: Colors.orange),
-        title: const Text('Conflict Review'),
+        title: const CollectorText('Conflict Review'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            const CollectorText(
               'A conflict (HTTP 409) occurred while uploading this submission to the study server.',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-            Text('Submission ID: ${widget.record.id}'),
+            CollectorText('Submission ID: ${widget.record.id}'),
             if (widget.record.conflictId != null)
-              Text('Conflict Reference: ${widget.record.conflictId}'),
+              CollectorText('Conflict Reference: ${widget.record.conflictId}'),
             if (widget.record.conflictMessage != null)
-              Text('Conflict Details: ${widget.record.conflictMessage}'),
-            Text(
+              CollectorText(
+                'Conflict Details: ${widget.record.conflictMessage}',
+              ),
+            CollectorText(
               'Participant: ${widget.record.participant.name} (${widget.record.participant.studyId})',
             ),
-            Text('Visit: ${widget.record.visitNumber}'),
-            Text('Recorded: ${widget.record.submittedAt.toLocal()}'),
+            CollectorText('Visit: ${widget.record.visitNumber}'),
+            CollectorText('Recorded: ${widget.record.submittedAt.toLocal()}'),
             const SizedBox(height: 12),
-            const Text(
+            const CollectorText(
               'The entry remains safely stored locally on this phone. You can manually retry uploading once server-side conflicts are addressed.',
             ),
           ],
@@ -2337,11 +2360,11 @@ class _LocalSubmissionDetailScreenState
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Close'),
+            child: const CollectorText('Close'),
           ),
           FilledButton.icon(
             icon: const Icon(Icons.refresh),
-            label: const Text('Retry Upload'),
+            label: const CollectorText('Retry Upload'),
             onPressed: () {
               Navigator.pop(dialogContext);
               _retry();
@@ -2373,13 +2396,13 @@ class _LocalSubmissionDetailScreenState
           TextButton.icon(
             onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text(
+                content: CollectorText(
                   'Editing submitted entries is not available in this demo.',
                 ),
               ),
             ),
             icon: const Icon(Icons.edit_outlined),
-            label: const Text('Edit'),
+            label: const CollectorText('Edit'),
           ),
         ],
       ),
@@ -2387,6 +2410,7 @@ class _LocalSubmissionDetailScreenState
         children: [
           ui.PageHeading(
             title: record.participant.name,
+            translateTitle: false,
             subtitle:
                 '${record.participant.studyId} · Visit ${record.visitNumber}',
           ),
@@ -2415,7 +2439,7 @@ class _LocalSubmissionDetailScreenState
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text(
+                          child: CollectorText(
                             'Sync Conflict - Review Required',
                             style: TextStyle(
                               fontSize: 16,
@@ -2427,16 +2451,9 @@ class _LocalSubmissionDetailScreenState
                       ],
                     ),
                     const SizedBox(height: 10),
-                    Text(
-                      record.conflictMessage != null
-                          ? 'HTTP 409 Conflict: ${record.conflictMessage}\n\n'
-                                'Conflict Reference: ${record.conflictId ?? record.id}\n'
-                                'Your data is safely preserved on this device and will NOT be overwritten or discarded. '
-                                'Automatic sync is paused for this record until you review and manually retry.'
-                          : 'HTTP 409 Conflict: This record conflicts with an existing entry on the server. '
-                                'Your data is safely preserved on this device and will NOT be overwritten or discarded. '
-                                'Automatic sync is paused for this record until you review and manually retry.',
-                      style: const TextStyle(fontSize: 14),
+                    const CollectorText(
+                      'Your entry is saved on this phone. Contact the administrator to resolve the sync conflict, then retry uploading.',
+                      style: TextStyle(fontSize: 14),
                     ),
                     const SizedBox(height: 16),
                     Wrap(
@@ -2446,7 +2463,7 @@ class _LocalSubmissionDetailScreenState
                         OutlinedButton.icon(
                           onPressed: () => _showConflictReviewDialog(context),
                           icon: const Icon(Icons.rate_review_outlined),
-                          label: const Text('Review Conflict'),
+                          label: const CollectorText('Review Conflict'),
                         ),
                         FilledButton.icon(
                           onPressed: _isRetrying ? null : _retry,
@@ -2460,7 +2477,7 @@ class _LocalSubmissionDetailScreenState
                                   ),
                                 )
                               : const Icon(Icons.cloud_upload_outlined),
-                          label: const Text('Retry Upload'),
+                          label: const CollectorText('Retry Upload'),
                         ),
                       ],
                     ),
@@ -2476,7 +2493,7 @@ class _LocalSubmissionDetailScreenState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  CollectorText(
                     'Submission details',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
@@ -2494,7 +2511,7 @@ class _LocalSubmissionDetailScreenState
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      const Text('Sync status'),
+                      const CollectorText('Sync status'),
                       if (isConflicted)
                         const _ConflictBadge()
                       else
@@ -2509,13 +2526,13 @@ class _LocalSubmissionDetailScreenState
           OutlinedButton.icon(
             onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text(
+                content: CollectorText(
                   'Editing submitted entries is not available in this demo.',
                 ),
               ),
             ),
             icon: const Icon(Icons.edit_outlined),
-            label: const Text('Edit submission'),
+            label: const CollectorText('Edit submission'),
           ),
         ],
       ),
@@ -2534,7 +2551,7 @@ class _DetailLine extends StatelessWidget {
     padding: const EdgeInsets.symmetric(vertical: 8),
     child: Row(
       children: [
-        Expanded(child: Text(label)),
+        Expanded(child: CollectorText(label)),
         Expanded(child: Text(value)),
       ],
     ),

@@ -5,11 +5,32 @@ console. Existing package identifiers, deployment domains and historical release
 names are preserved for compatibility.
 
 The visible app/console name is exactly `Vivayu`, without a version suffix.
-The Vivayu +8.1 collector distribution uses internal version `1.0.1+9` so it can
+The Vivayu +9 collector distribution uses internal version `1.0.2+10` so it can
 update an older signed build. Existing installed phone apps are not changed
 until the user installs the new package.
 
-## Vivayu +8.1 questionnaire
+## Vivayu +9 — English / తెలుగు
+
+The Android collector has an English/తెలుగు toggle above every screen, including
+sign-in and the QR scanner. English is the default. The choice is remembered on
+each phone, survives sign-out, and does not reset answers or navigation. Telugu
+fonts are bundled for offline use. Questions, choices, measurement instructions,
+validation, review, receipts, saved visits and sync guidance are translated.
+
+The admin console remains English. Language changes affect displayed copy only:
+questionnaire codes, schema 3, calculations and sync payloads are unchanged.
+Participant names, notes, identifiers and units are never translated. The app
+does not change the phone's keyboard language; English keyboards remain usable
+and numeric measurement keyboards are retained.
+
+Install the signed update over the existing official Vivayu APK; do not uninstall
+or clear app data to update. A legacy test/debug APK signed with another key
+cannot be updated by this package; recover pending records before changing it.
+No backend deployment is required for +9. See the
+[verification report](tool/acceptance/VIVAYU_9_TELUGU_REPORT.md) and
+[bilingual wording checklist](tool/acceptance/VIVAYU_9_WORDING_CHECKLIST.md).
+
+## Questionnaire retained from +8.1
 
 New questionnaire submissions record hip circumference in centimetres or an
 explicit `unable`/`declined` reason. The app and server calculate waist-to-hip
@@ -27,7 +48,11 @@ server records.
 For all preserved versions, historical root READMEs, and complete component
 READMEs, see [the version history and README archive](CHANGELOG.md).
 
-## Admin console +6.3
+## Admin console features and historical +6 checkpoints
+
+The features below remain available, but statements about the installed +6
+test phone and its outstanding checks describe historical checkpoints. For this
+release's verification and phone-review limitations, use the +9 report above.
 
 The console has an explicit **Sign out** button on desktop and mobile. It closes
 this browser's API client, removes the dashboard, and returns to blank key entry.
@@ -62,7 +87,7 @@ This update changes the admin console and supporting backend only. The installed
 collector app remains +6, using its existing QR format. Its future source display
 name is +6.1; no new phone APK has been built or installed for this update.
 
-Current focused verification passed 95 automated tests and static analysis.
+At the admin-console checkpoint, focused verification passed 95 automated tests and static analysis.
 Browser checks covered records, edits, reversible archive, CSV, collector
 creation/QR/reset/disable, mobile layouts, and outage recovery in isolation.
 Two-phone takeover support remains, but the user has waived its test as a
@@ -101,7 +126,10 @@ when both readings are present. The admin record details and CSV export retain
 the missing reasons while leaving missing numeric values empty. Exports omit
 participant name and phone.
 
-## Current +6 deployment and acceptance status
+## Deployment architecture and historical +6 acceptance
+
+The +6 test results below are historical evidence, not the +9 test results.
+The +9 update requires no change to this server architecture.
 
 The production DigitalOcean Ubuntu VPS is active. The backend listens on
 `127.0.0.1:8787` behind Caddy, which provides public HTTPS at the API and admin
@@ -170,12 +198,12 @@ production package. For a deliberate new production package:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tool/package_android_release.ps1 `
-  -BuildName 1.0.0 -BuildNumber 6 -PublicRelease `
+  -BuildName 1.0.2 -BuildNumber 10 -PublicRelease `
   -LocalApiBaseUrl https://api.nutrition.achantalabs.com `
   -SigningBackupConfirmed -NoPub
 ```
 
-Use a higher build number if 6 already exists in `dist/android/shared/`. Never
+Use a higher build number for future updates or if 10 already exists in `dist/android/shared/`. Never
 pass collector credentials or identity to the package script.
 
 Follow [the VPS deployment guide](tool/vps/README.md) for credential
@@ -212,7 +240,7 @@ acceptance status here rather than treating older snapshots as live status.
 ## Older local and Firebase paths
 
 The local LAN sync server and Firebase collector integration are separate
-development alternatives, not the current +6 public deployment path. LAN HTTP
+development alternatives, not the production public deployment path. LAN HTTP
 is restricted to trusted private networks and must never be exposed to the
 internet. The Firebase visit repository and hosted sign-in flow are not yet
 connected end-to-end. See [LOCAL_SYNC.md](tool/LOCAL_SYNC.md) for LAN-only

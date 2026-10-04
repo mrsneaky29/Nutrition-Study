@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/collector_language.dart';
+
 import '../domain/participant_id.dart';
 import 'presentation_widgets.dart';
 import 'view_models.dart';
@@ -74,7 +76,7 @@ class _ParticipantLookupScreenState extends State<ParticipantLookupScreen> {
             child: TextButton.icon(
               onPressed: () => setState(() => _lookupByStudyId = true),
               icon: const Icon(Icons.search),
-              label: const Text('Repeat visit using Study ID'),
+              label: const CollectorText('Repeat visit using Study ID'),
             ),
           ),
         if (widget.allowOfflineStudyIdLookup && _lookupByStudyId)
@@ -83,7 +85,7 @@ class _ParticipantLookupScreenState extends State<ParticipantLookupScreen> {
             child: TextButton.icon(
               onPressed: () => setState(() => _lookupByStudyId = false),
               icon: const Icon(Icons.arrow_back),
-              label: const Text('Find by name and phone'),
+              label: const CollectorText('Find by name and phone'),
             ),
           ),
         Card(
@@ -95,17 +97,21 @@ class _ParticipantLookupScreenState extends State<ParticipantLookupScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (_lookupByStudyId) ...[
-                    const Text(
+                    const CollectorText(
                       'Looks up saved visits on this phone, so it works without internet. '
                       'Use the Study ID printed on the participant’s card or logbook.',
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
+                      errorBuilder: (context, error) => CollectorText(error),
                       controller: _studyId,
                       textCapitalization: TextCapitalization.characters,
-                      decoration: const InputDecoration(
-                        labelText: 'Study ID from card/logbook',
-                        hintText: 'C07-000123 or P001',
+                      decoration: InputDecoration(
+                        labelText: collectorText(
+                          context,
+                          'Study ID from card/logbook',
+                        ),
+                        hintText: collectorText(context, 'C07-000123 or P001'),
                       ),
                       validator: (value) =>
                           normalizeParticipantStudyId(value) == null
@@ -114,10 +120,11 @@ class _ParticipantLookupScreenState extends State<ParticipantLookupScreen> {
                     ),
                   ] else ...[
                     TextFormField(
+                      errorBuilder: (context, error) => CollectorText(error),
                       controller: _name,
                       textCapitalization: TextCapitalization.words,
-                      decoration: const InputDecoration(
-                        labelText: 'Participant name',
+                      decoration: InputDecoration(
+                        labelText: collectorText(context, 'Participant name'),
                       ),
                       validator: (value) =>
                           value == null || value.trim().isEmpty
@@ -126,10 +133,11 @@ class _ParticipantLookupScreenState extends State<ParticipantLookupScreen> {
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
+                      errorBuilder: (context, error) => CollectorText(error),
                       controller: _phone,
                       keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(
-                        labelText: 'Phone number',
+                      decoration: InputDecoration(
+                        labelText: collectorText(context, 'Phone number'),
                       ),
                       validator: (value) =>
                           value == null || value.trim().isEmpty
@@ -140,7 +148,7 @@ class _ParticipantLookupScreenState extends State<ParticipantLookupScreen> {
                   const SizedBox(height: 24),
                   FilledButton(
                     onPressed: _submit,
-                    child: Text(
+                    child: CollectorText(
                       _lookupByStudyId
                           ? 'Find saved participant'
                           : 'Find participant',

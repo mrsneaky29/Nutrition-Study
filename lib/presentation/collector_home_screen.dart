@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/collector_language.dart';
+
 import 'app_strings.dart';
 import 'presentation_widgets.dart';
 import 'view_models.dart';
@@ -37,10 +39,10 @@ class CollectorHomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ResponsivePage(
     appBar: AppBar(
-      title: const Text(AppStrings.appName),
+      title: const CollectorText(AppStrings.appName),
       actions: [
         IconButton(
-          tooltip: 'Retry pending sync',
+          tooltip: collectorText(context, 'Retry pending sync'),
           onPressed: pendingCount == 0 || isRetrying
               ? null
               : () => onRetryPending?.call(),
@@ -53,7 +55,7 @@ class CollectorHomeScreen extends StatelessWidget {
               : const Icon(Icons.sync),
         ),
         IconButton(
-          tooltip: AppStrings.signOut,
+          tooltip: collectorText(context, AppStrings.signOut),
           onPressed: onSignOut,
           icon: const Icon(Icons.logout),
         ),
@@ -65,7 +67,7 @@ class CollectorHomeScreen extends StatelessWidget {
         onPressed: onStartEntry,
         extendedPadding: const EdgeInsets.symmetric(horizontal: 26),
         icon: const Icon(Icons.person_add_alt_1, size: 26),
-        label: const Text(
+        label: const CollectorText(
           'New participant',
           style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
         ),
@@ -82,8 +84,8 @@ class CollectorHomeScreen extends StatelessWidget {
             color: Theme.of(context).colorScheme.errorContainer,
             child: ListTile(
               leading: const Icon(Icons.warning_amber_rounded),
-              title: const Text('Some saved visits need attention'),
-              subtitle: Text(draftRecoveryWarning!),
+              title: const CollectorText('Some saved visits need attention'),
+              subtitle: CollectorText(draftRecoveryWarning!),
             ),
           ),
           const SizedBox(height: 12),
@@ -112,12 +114,12 @@ class CollectorHomeScreen extends StatelessWidget {
           Card(
             child: ListTile(
               leading: const Icon(Icons.edit_note),
-              title: Text(
+              title: CollectorText(
                 savedVisitDraftCount == 1
                     ? 'In-progress visit saved'
                     : '$savedVisitDraftCount in-progress visits saved',
               ),
-              subtitle: const Text('Continue where you left off.'),
+              subtitle: const CollectorText('Continue where you left off.'),
               trailing: const Icon(Icons.chevron_right),
               onTap: onResumeSavedVisit,
             ),
@@ -128,14 +130,14 @@ class CollectorHomeScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Expanded(
-              child: Text(
+              child: CollectorText(
                 'Recent activity',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
             ),
             TextButton(
               onPressed: onOpenSubmissions,
-              child: const Text('View all'),
+              child: const CollectorText('View all'),
             ),
           ],
         ),
@@ -154,7 +156,7 @@ class CollectorHomeScreen extends StatelessWidget {
                 onTap: () => onOpenSubmission?.call(submission),
                 leading: const CircleAvatar(child: Icon(Icons.person_outline)),
                 title: Text(submission.participantName),
-                subtitle: Text(
+                subtitle: CollectorText(
                   '${submission.studyId} · Visit ${submission.visitNumber}',
                 ),
                 trailing: StatusChip(state: submission.syncState),
@@ -191,7 +193,7 @@ class _MetricCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(value, style: Theme.of(context).textTheme.headlineSmall),
-                Text(label),
+                CollectorText(label),
               ],
             ),
           ),

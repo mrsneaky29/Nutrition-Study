@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 
+import 'dart:async';
+
+import 'l10n/app_localizations.dart';
+import 'l10n/collector_language.dart';
+
 import 'collector/collector_cloud_controller.dart';
 import 'collector_auth/secure_installation_session_store.dart';
 import 'config/study_runtime_configuration.dart';
@@ -46,28 +51,71 @@ Future<void> main() async {
   );
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({
     this.syncGateway,
     this.recordStore,
     this.cloudController,
+    this.languageController,
     super.key,
   });
 
   final LocalRecordSyncGateway? syncGateway;
   final LocalRecordStore? recordStore;
   final CollectorCloudController? cloudController;
+  final CollectorLanguageController? languageController;
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  late final CollectorLanguageController _language =
+      widget.languageController ?? CollectorLanguageController();
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_language.load());
+  }
+
+  @override
+  void dispose() {
+    if (widget.languageController == null) _language.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Vivayu',
-      theme: PresentationTheme.materialTheme(),
-      home: LocalDemoApp(
-        syncGateway: syncGateway,
-        recordStore: recordStore,
-        cloudController: cloudController,
+    return CollectorLanguageScope(
+      controller: _language,
+      child: AnimatedBuilder(
+        animation: _language,
+        builder: (context, _) => MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'Vivayu',
+          locale: _language.locale,
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          theme: PresentationTheme.materialTheme(),
+          builder: (context, child) => Column(
+            children: [
+              const CollectorLanguageBar(),
+              Expanded(
+                child: MediaQuery.removePadding(
+                  context: context,
+                  removeTop: true,
+                  child: child!,
+                ),
+              ),
+            ],
+          ),
+          home: LocalDemoApp(
+            syncGateway: widget.syncGateway,
+            recordStore: widget.recordStore,
+            cloudController: widget.cloudController,
+          ),
+        ),
       ),
     );
   }

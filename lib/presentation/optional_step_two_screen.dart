@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/collector_language.dart';
+
 import 'app_strings.dart';
 import 'presentation_widgets.dart';
 
@@ -57,9 +59,12 @@ class _OptionalStepTwoScreenState extends State<OptionalStepTwoScreen> {
                   controller: _note,
                   maxLines: 4,
                   onChanged: widget.onNoteChanged,
-                  decoration: const InputDecoration(
-                    labelText: 'Optional note',
-                    hintText: 'Leave blank to continue without this step.',
+                  decoration: InputDecoration(
+                    labelText: collectorText(context, 'Optional note'),
+                    hintText: collectorText(
+                      context,
+                      'Leave blank to continue without this step.',
+                    ),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -67,11 +72,11 @@ class _OptionalStepTwoScreenState extends State<OptionalStepTwoScreen> {
                   onPressed: () => widget.onContinue?.call(
                     _note.text.trim().isEmpty ? null : _note.text.trim(),
                   ),
-                  child: const Text(AppStrings.continueLabel),
+                  child: const CollectorText(AppStrings.continueLabel),
                 ),
                 TextButton(
                   onPressed: widget.onSkip,
-                  child: const Text('Skip this optional step'),
+                  child: const CollectorText('Skip this optional step'),
                 ),
               ],
             ),

@@ -6,6 +6,14 @@ For current operating instructions, start with [README.md](README.md).
 
 ## Important version distinctions
 
+- **Vivayu +9** adds complete collector English/తెలుగు display switching,
+  persisted separately from records and credentials, with an offline Telugu
+  font and a toggle above every route. Android metadata is `1.0.2+10`, preserving
+  the official package ID and signing certificate. Names/notes remain unchanged,
+  numeric keyboard types are preserved, and the phone keyboard language is not
+  changed. Admin remains English; no backend/schema migration is required.
+  See `tool/acceptance/VIVAYU_9_TELUGU_REPORT.md` and the bilingual checklist.
+
 - **Vivayu +8.1** adds hip circumference (or a missing-measurement reason),
   a calculated waist-to-hip ratio, and full interview answers in admin record
   details. Android package metadata is `1.0.1+9`; the visible name remains
@@ -46,6 +54,7 @@ For current operating instructions, start with [README.md](README.md).
 
 | Version | Purpose and recorded changes | Documentation/source evidence | Artifact qualification |
 | --- | --- | --- | --- |
+| Vivayu +9 | Collector English/తెలుగు UI, persistent per-phone selection, offline Telugu font, responsive text wrapping; unchanged admin, questionnaire codes and sync schema. | Telugu report and bilingual wording checklist in `tool/acceptance/`; predecessor source `1fff91d`. | Signed production update `1.0.2+10`, same package/certificate as official +8.1. Physical-phone and native-speaker review remain explicitly separate from automated checks. |
 | +1 | Early collector/admin project and retained Android distribution baseline. | Initial README checkpoint `43f2949`; first-phone guide later records retained +1 artifacts. | Exact released APK/source pairing not established by this archive. |
 | +2 | Shared collector app; runtime collector identity/key; latest-login session model; local home-PC sync; isolated Windows first-phone guide and separate admin site. | First-phone checkpoint `7d4f351`; related implementation `8c7e642`; `tool/FIRST_PHONE_TEST.md`. | The guide explicitly identifies `study-collector-1.0.0+2.apk`; source checkpoint is not a retroactive version tag. |
 | +3 | Preserved intermediate local-sync release; nearby history includes survey draft recovery, validation and integrity safeguards. | Related source checkpoint `d71a0df`; WSL operator README names +3 as an upgrade target. | A distinct +3 README and exact APK-to-commit pairing have not been verified. The related checkpoint is included in full, not invented as an exact release snapshot. |

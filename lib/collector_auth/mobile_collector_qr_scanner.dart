@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../l10n/collector_language.dart';
+
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'collector_qr_payload.dart';
@@ -233,11 +236,11 @@ class _CollectorQrScannerPageState extends State<_CollectorQrScannerPage>
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Scan collector setup code'),
+        title: const CollectorText('Scan collector setup code'),
         foregroundColor: Colors.white,
         backgroundColor: Colors.black,
         leading: IconButton(
-          tooltip: 'Cancel scan',
+          tooltip: collectorText(context, 'Cancel scan'),
           icon: const Icon(Icons.close),
           onPressed: _cancel,
         ),
@@ -285,7 +288,7 @@ class _CollectorQrScannerPageState extends State<_CollectorQrScannerPage>
                           size: 48,
                         ),
                         const SizedBox(height: 16),
-                        Text(
+                        CollectorText(
                           message,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
@@ -297,20 +300,20 @@ class _CollectorQrScannerPageState extends State<_CollectorQrScannerPage>
                         if (_permissionDenied) ...<Widget>[
                           FilledButton(
                             onPressed: _retry,
-                            child: const Text('Try again'),
+                            child: const CollectorText('Try again'),
                           ),
                           TextButton(
                             onPressed: _finishWithPermissionResult,
-                            child: const Text('Close scanner'),
+                            child: const CollectorText('Close scanner'),
                           ),
                         ] else ...<Widget>[
                           FilledButton(
                             onPressed: _retry,
-                            child: const Text('Scan again'),
+                            child: const CollectorText('Scan again'),
                           ),
                           TextButton(
                             onPressed: _finishWithCameraError,
-                            child: const Text('Close scanner'),
+                            child: const CollectorText('Close scanner'),
                           ),
                         ],
                       ],
@@ -324,7 +327,7 @@ class _CollectorQrScannerPageState extends State<_CollectorQrScannerPage>
               left: 24,
               right: 24,
               bottom: 32,
-              child: Text(
+              child: CollectorText(
                 'Place the collector setup QR code inside the frame.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white, fontSize: 16),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/collector_language.dart';
+
 import 'presentation_widgets.dart';
 import 'view_models.dart';
 
@@ -39,9 +41,9 @@ class _MySubmissionsScreenState extends State<MySubmissionsScreen> {
             subtitle: 'Entries created by your account.',
           ),
           TextField(
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               prefixIcon: Icon(Icons.search),
-              hintText: 'Search by name or Study ID',
+              hintText: collectorText(context, 'Search by name or Study ID'),
             ),
             onChanged: (value) => setState(() => _query = value.trim()),
           ),
@@ -62,7 +64,7 @@ class _MySubmissionsScreenState extends State<MySubmissionsScreen> {
                         child: ListTile(
                           onTap: () => widget.onOpen?.call(item),
                           title: Text(item.participantName),
-                          subtitle: Text(
+                          subtitle: CollectorText(
                             '${item.studyId} · Visit ${item.visitNumber}',
                           ),
                           trailing: StatusChip(state: item.syncState),
@@ -97,7 +99,7 @@ class SubmissionDetailScreen extends StatelessWidget {
         TextButton.icon(
           onPressed: onEdit,
           icon: const Icon(Icons.edit_outlined),
-          label: const Text('Edit'),
+          label: const CollectorText('Edit'),
         ),
       ],
     ),
@@ -105,6 +107,7 @@ class SubmissionDetailScreen extends StatelessWidget {
       children: [
         PageHeading(
           title: submission.participantName,
+          translateTitle: false,
           subtitle: '${submission.studyId} · Visit ${submission.visitNumber}',
         ),
         Card(
@@ -113,7 +116,7 @@ class SubmissionDetailScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                CollectorText(
                   'Submission details',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
@@ -124,7 +127,7 @@ class SubmissionDetailScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Sync status'),
+                    const CollectorText('Sync status'),
                     StatusChip(state: submission.syncState),
                   ],
                 ),
@@ -136,7 +139,7 @@ class SubmissionDetailScreen extends StatelessWidget {
         OutlinedButton.icon(
           onPressed: onEdit,
           icon: const Icon(Icons.edit_outlined),
-          label: const Text('Edit submission'),
+          label: const CollectorText('Edit submission'),
         ),
       ],
     ),
@@ -154,7 +157,7 @@ class _DetailLine extends StatelessWidget {
     padding: const EdgeInsets.symmetric(vertical: 8),
     child: Row(
       children: [
-        Expanded(child: Text(label)),
+        Expanded(child: CollectorText(label)),
         Expanded(child: Text(value)),
       ],
     ),

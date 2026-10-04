@@ -1,0 +1,1232 @@
+{
+  "@@locale": "en",
+  "continueLabel": "Continue",
+  "@continueLabel": {
+    "description": "Collector interface: Continue"
+  },
+  "signOut": "Sign out",
+  "@signOut": {
+    "description": "Collector interface: Sign out"
+  },
+  "studyId": "Study ID",
+  "@studyId": {
+    "description": "Collector interface: Study ID"
+  },
+  "participantName": "Participant name",
+  "@participantName": {
+    "description": "Collector interface: Participant name"
+  },
+  "phoneNumber": "Phone number",
+  "@phoneNumber": {
+    "description": "Collector interface: Phone number"
+  },
+  "saveAndContinue": "Save and continue",
+  "@saveAndContinue": {
+    "description": "Collector interface: Save and continue"
+  },
+  "reviewAndSubmit": "Review and submit",
+  "@reviewAndSubmit": {
+    "description": "Collector interface: Review and submit"
+  },
+  "back": "Back",
+  "@back": {
+    "description": "Collector interface: Back"
+  },
+  "submissionReceipt": "Submission receipt",
+  "@submissionReceipt": {
+    "description": "Collector interface: Submission receipt"
+  },
+  "optionalStep2": "Optional Step 2",
+  "@optionalStep2": {
+    "description": "Collector interface: Optional Step 2"
+  },
+  "newParticipant": "New participant",
+  "@newParticipant": {
+    "description": "Collector interface: New participant"
+  },
+  "retryPendingSync": "Retry pending sync",
+  "@retryPendingSync": {
+    "description": "Collector interface: Retry pending sync"
+  },
+  "startAVisitOrReturnToOneOfYourSavedSubmissions": "Start a visit or return to one of your saved submissions.",
+  "@startAVisitOrReturnToOneOfYourSavedSubmissions": {
+    "description": "Collector interface: Start a visit or return to one of your saved submissions."
+  },
+  "someSavedVisitsNeedAttention": "Some saved visits need attention",
+  "@someSavedVisitsNeedAttention": {
+    "description": "Collector interface: Some saved visits need attention"
+  },
+  "awaitingSync": "Awaiting sync",
+  "@awaitingSync": {
+    "description": "Collector interface: Awaiting sync"
+  },
+  "recentSubmissions": "Recent submissions",
+  "@recentSubmissions": {
+    "description": "Collector interface: Recent submissions"
+  },
+  "inProgressVisitSaved": "In-progress visit saved",
+  "@inProgressVisitSaved": {
+    "description": "Collector interface: In-progress visit saved"
+  },
+  "continueWhereYouLeftOff": "Continue where you left off.",
+  "@continueWhereYouLeftOff": {
+    "description": "Collector interface: Continue where you left off."
+  },
+  "recentActivity": "Recent activity",
+  "@recentActivity": {
+    "description": "Collector interface: Recent activity"
+  },
+  "viewAll": "View all",
+  "@viewAll": {
+    "description": "Collector interface: View all"
+  },
+  "noSubmissionsYet": "No submissions yet",
+  "@noSubmissionsYet": {
+    "description": "Collector interface: No submissions yet"
+  },
+  "yourCompletedAndSavedVisitsWillAppearHere": "Your completed and saved visits will appear here.",
+  "@yourCompletedAndSavedVisitsWillAppearHere": {
+    "description": "Collector interface: Your completed and saved visits will appear here."
+  },
+  "savedOnThisDevice": "Saved on this device",
+  "@savedOnThisDevice": {
+    "description": "Collector interface: Saved on this device"
+  },
+  "synced": "Synced",
+  "@synced": {
+    "description": "Collector interface: Synced"
+  },
+  "pendingSync": "Pending sync",
+  "@pendingSync": {
+    "description": "Collector interface: Pending sync"
+  },
+  "syncNeedsAttention": "Sync needs attention",
+  "@syncNeedsAttention": {
+    "description": "Collector interface: Sync needs attention"
+  },
+  "optionalInformationCanBeAddedOnlyWhenAppropriate": "Optional information can be added only when appropriate.",
+  "@optionalInformationCanBeAddedOnlyWhenAppropriate": {
+    "description": "Collector interface: Optional information can be added only when appropriate."
+  },
+  "optionalNote": "Optional note",
+  "@optionalNote": {
+    "description": "Collector interface: Optional note"
+  },
+  "leaveBlankToContinueWithoutThisStep": "Leave blank to continue without this step.",
+  "@leaveBlankToContinueWithoutThisStep": {
+    "description": "Collector interface: Leave blank to continue without this step."
+  },
+  "skipThisOptionalStep": "Skip this optional step",
+  "@skipThisOptionalStep": {
+    "description": "Collector interface: Skip this optional step"
+  },
+  "participant": "Participant",
+  "@participant": {
+    "description": "Collector interface: Participant"
+  },
+  "findAParticipantOrStartANewParticipantRecord": "Find a participant or start a new participant record.",
+  "@findAParticipantOrStartANewParticipantRecord": {
+    "description": "Collector interface: Find a participant or start a new participant record."
+  },
+  "repeatVisitUsingStudyId": "Repeat visit using Study ID",
+  "@repeatVisitUsingStudyId": {
+    "description": "Collector interface: Repeat visit using Study ID"
+  },
+  "findByNameAndPhone": "Find by name and phone",
+  "@findByNameAndPhone": {
+    "description": "Collector interface: Find by name and phone"
+  },
+  "looksUpSavedVisitsOnThisPhoneSoItWorksWithoutInternetUseTheStudyIdPrintedOnTheParticipantSCardOrLogbook": "Looks up saved visits on this phone, so it works without internet. Use the Study ID printed on the participant’s card or logbook.",
+  "@looksUpSavedVisitsOnThisPhoneSoItWorksWithoutInternetUseTheStudyIdPrintedOnTheParticipantSCardOrLogbook": {
+    "description": "Collector interface: Looks up saved visits on this phone, so it works without internet. Use the Study ID printed on the participant’s card or logbook."
+  },
+  "studyIdFromCardLogbook": "Study ID from card/logbook",
+  "@studyIdFromCardLogbook": {
+    "description": "Collector interface: Study ID from card/logbook"
+  },
+  "enterAValidStudyIdSuchAsC07000123": "Enter a valid Study ID, such as C07-000123.",
+  "@enterAValidStudyIdSuchAsC07000123": {
+    "description": "Collector interface: Enter a valid Study ID, such as C07-000123."
+  },
+  "enterAParticipantName": "Enter a participant name.",
+  "@enterAParticipantName": {
+    "description": "Collector interface: Enter a participant name."
+  },
+  "enterAPhoneNumber": "Enter a phone number.",
+  "@enterAPhoneNumber": {
+    "description": "Collector interface: Enter a phone number."
+  },
+  "findSavedParticipant": "Find saved participant",
+  "@findSavedParticipant": {
+    "description": "Collector interface: Find saved participant"
+  },
+  "findParticipant": "Find participant",
+  "@findParticipant": {
+    "description": "Collector interface: Find participant"
+  },
+  "confirmVisit": "Confirm visit",
+  "@confirmVisit": {
+    "description": "Collector interface: Confirm visit"
+  },
+  "checkTheAutomaticallyAssignedParticipantAndVisitNumbers": "Check the automatically assigned participant and visit numbers.",
+  "@checkTheAutomaticallyAssignedParticipantAndVisitNumbers": {
+    "description": "Collector interface: Check the automatically assigned participant and visit numbers."
+  },
+  "participantNumber": "Participant number",
+  "@participantNumber": {
+    "description": "Collector interface: Participant number"
+  },
+  "firstVisit": "First visit",
+  "@firstVisit": {
+    "description": "Collector interface: First visit"
+  },
+  "aNewParticipantNumberHasBeenAssigned": "A new participant number has been assigned.",
+  "@aNewParticipantNumberHasBeenAssigned": {
+    "description": "Collector interface: A new participant number has been assigned."
+  },
+  "updatedAutomaticallyFromThisParticipantSHistory": "Updated automatically from this participant’s history.",
+  "@updatedAutomaticallyFromThisParticipantSHistory": {
+    "description": "Collector interface: Updated automatically from this participant’s history."
+  },
+  "confirmAndContinue": "Confirm and continue",
+  "@confirmAndContinue": {
+    "description": "Collector interface: Confirm and continue"
+  },
+  "mySubmissions": "My submissions",
+  "@mySubmissions": {
+    "description": "Collector interface: My submissions"
+  },
+  "entriesCreatedByYourAccount": "Entries created by your account.",
+  "@entriesCreatedByYourAccount": {
+    "description": "Collector interface: Entries created by your account."
+  },
+  "searchByNameOrStudyId": "Search by name or Study ID",
+  "@searchByNameOrStudyId": {
+    "description": "Collector interface: Search by name or Study ID"
+  },
+  "noMatchingSubmissions": "No matching submissions",
+  "@noMatchingSubmissions": {
+    "description": "Collector interface: No matching submissions"
+  },
+  "tryADifferentSearchOrCreateANewParticipantEntry": "Try a different search or create a new participant entry.",
+  "@tryADifferentSearchOrCreateANewParticipantEntry": {
+    "description": "Collector interface: Try a different search or create a new participant entry."
+  },
+  "edit": "Edit",
+  "@edit": {
+    "description": "Collector interface: Edit"
+  },
+  "editSubmission": "Edit submission",
+  "@editSubmission": {
+    "description": "Collector interface: Edit submission"
+  },
+  "submissionDetails": "Submission details",
+  "@submissionDetails": {
+    "description": "Collector interface: Submission details"
+  },
+  "submissionId": "Submission ID",
+  "@submissionId": {
+    "description": "Collector interface: Submission ID"
+  },
+  "recorded": "Recorded",
+  "@recorded": {
+    "description": "Collector interface: Recorded"
+  },
+  "syncStatus": "Sync status",
+  "@syncStatus": {
+    "description": "Collector interface: Sync status"
+  },
+  "reviewSubmission": "Review submission",
+  "@reviewSubmission": {
+    "description": "Collector interface: Review submission"
+  },
+  "checkEveryAnswerBeforeSubmitting": "Check every answer before submitting.",
+  "@checkEveryAnswerBeforeSubmitting": {
+    "description": "Collector interface: Check every answer before submitting."
+  },
+  "name": "Name",
+  "@name": {
+    "description": "Collector interface: Name"
+  },
+  "phone": "Phone",
+  "@phone": {
+    "description": "Collector interface: Phone"
+  },
+  "studyAndProfile": "Study and profile",
+  "@studyAndProfile": {
+    "description": "Collector interface: Study and profile"
+  },
+  "visitNumber": "Visit number",
+  "@visitNumber": {
+    "description": "Collector interface: Visit number"
+  },
+  "studySite": "Study site",
+  "@studySite": {
+    "description": "Collector interface: Study site"
+  },
+  "age": "Age",
+  "@age": {
+    "description": "Collector interface: Age"
+  },
+  "sex": "Sex",
+  "@sex": {
+    "description": "Collector interface: Sex"
+  },
+  "educationLevel": "Education level",
+  "@educationLevel": {
+    "description": "Collector interface: Education level"
+  },
+  "workCategory": "Work category",
+  "@workCategory": {
+    "description": "Collector interface: Work category"
+  },
+  "tobaccoAndAlcohol": "Tobacco and alcohol",
+  "@tobaccoAndAlcohol": {
+    "description": "Collector interface: Tobacco and alcohol"
+  },
+  "tobaccoUse": "Tobacco use",
+  "@tobaccoUse": {
+    "description": "Collector interface: Tobacco use"
+  },
+  "tobaccoType": "Tobacco type",
+  "@tobaccoType": {
+    "description": "Collector interface: Tobacco type"
+  },
+  "tobaccoFrequency": "Tobacco frequency",
+  "@tobaccoFrequency": {
+    "description": "Collector interface: Tobacco frequency"
+  },
+  "alcoholInPast30Days": "Alcohol in past 30 days",
+  "@alcoholInPast30Days": {
+    "description": "Collector interface: Alcohol in past 30 days"
+  },
+  "alcoholFrequency": "Alcohol frequency",
+  "@alcoholFrequency": {
+    "description": "Collector interface: Alcohol frequency"
+  },
+  "dietActivityAndSleep": "Diet, activity and sleep",
+  "@dietActivityAndSleep": {
+    "description": "Collector interface: Diet, activity and sleep"
+  },
+  "fruitPast7Days": "Fruit (past 7 days)",
+  "@fruitPast7Days": {
+    "description": "Collector interface: Fruit (past 7 days)"
+  },
+  "vegetablesPast7Days": "Vegetables (past 7 days)",
+  "@vegetablesPast7Days": {
+    "description": "Collector interface: Vegetables (past 7 days)"
+  },
+  "sugaryDrinksPast7Days": "Sugary drinks (past 7 days)",
+  "@sugaryDrinksPast7Days": {
+    "description": "Collector interface: Sugary drinks (past 7 days)"
+  },
+  "processedFoodsPast7Days": "Processed foods (past 7 days)",
+  "@processedFoodsPast7Days": {
+    "description": "Collector interface: Processed foods (past 7 days)"
+  },
+  "activeDaysPerWeek": "Active days per week",
+  "@activeDaysPerWeek": {
+    "description": "Collector interface: Active days per week"
+  },
+  "activeMinutesPerDay": "Active minutes per day",
+  "@activeMinutesPerDay": {
+    "description": "Collector interface: Active minutes per day"
+  },
+  "weeklyActiveMinutes": "Weekly active minutes",
+  "@weeklyActiveMinutes": {
+    "description": "Collector interface: Weekly active minutes"
+  },
+  "sleepPerNight": "Sleep per night",
+  "@sleepPerNight": {
+    "description": "Collector interface: Sleep per night"
+  },
+  "knownDiagnoses": "Known diagnoses",
+  "@knownDiagnoses": {
+    "description": "Collector interface: Known diagnoses"
+  },
+  "hypertension": "Hypertension",
+  "@hypertension": {
+    "description": "Collector interface: Hypertension"
+  },
+  "diabetes": "Diabetes",
+  "@diabetes": {
+    "description": "Collector interface: Diabetes"
+  },
+  "highCholesterol": "High cholesterol",
+  "@highCholesterol": {
+    "description": "Collector interface: High cholesterol"
+  },
+  "cardiovascularDisease": "Cardiovascular disease",
+  "@cardiovascularDisease": {
+    "description": "Collector interface: Cardiovascular disease"
+  },
+  "physicalMeasurements": "Physical measurements",
+  "@physicalMeasurements": {
+    "description": "Collector interface: Physical measurements"
+  },
+  "height": "Height",
+  "@height": {
+    "description": "Collector interface: Height"
+  },
+  "weight": "Weight",
+  "@weight": {
+    "description": "Collector interface: Weight"
+  },
+  "waistCircumference": "Waist circumference",
+  "@waistCircumference": {
+    "description": "Collector interface: Waist circumference"
+  },
+  "hipCircumference": "Hip circumference",
+  "@hipCircumference": {
+    "description": "Collector interface: Hip circumference"
+  },
+  "waistToHipRatio": "Waist-to-hip ratio",
+  "@waistToHipRatio": {
+    "description": "Collector interface: Waist-to-hip ratio"
+  },
+  "bmi": "BMI",
+  "@bmi": {
+    "description": "Collector interface: BMI"
+  },
+  "bloodPressureReading1": "Blood pressure reading 1",
+  "@bloodPressureReading1": {
+    "description": "Collector interface: Blood pressure reading 1"
+  },
+  "bloodPressureReading2": "Blood pressure reading 2",
+  "@bloodPressureReading2": {
+    "description": "Collector interface: Blood pressure reading 2"
+  },
+  "averageBloodPressure": "Average blood pressure",
+  "@averageBloodPressure": {
+    "description": "Collector interface: Average blood pressure"
+  },
+  "saving": "Saving...",
+  "@saving": {
+    "description": "Collector interface: Saving..."
+  },
+  "notCompleted": "Not completed",
+  "@notCompleted": {
+    "description": "Collector interface: Not completed"
+  },
+  "notAnswered": "Not answered",
+  "@notAnswered": {
+    "description": "Collector interface: Not answered"
+  },
+  "notApplicable": "Not applicable",
+  "@notApplicable": {
+    "description": "Collector interface: Not applicable"
+  },
+  "notRecorded": "Not recorded",
+  "@notRecorded": {
+    "description": "Collector interface: Not recorded"
+  },
+  "notCalculated": "Not calculated",
+  "@notCalculated": {
+    "description": "Collector interface: Not calculated"
+  },
+  "notCollected": "Not collected",
+  "@notCollected": {
+    "description": "Collector interface: Not collected"
+  },
+  "notProvided": "Not provided",
+  "@notProvided": {
+    "description": "Collector interface: Not provided"
+  },
+  "communityClinic": "Community clinic",
+  "@communityClinic": {
+    "description": "Collector interface: Community clinic"
+  },
+  "communityOutreach": "Community outreach",
+  "@communityOutreach": {
+    "description": "Collector interface: Community outreach"
+  },
+  "otherStudySite": "Other study site",
+  "@otherStudySite": {
+    "description": "Collector interface: Other study site"
+  },
+  "female": "Female",
+  "@female": {
+    "description": "Collector interface: Female"
+  },
+  "male": "Male",
+  "@male": {
+    "description": "Collector interface: Male"
+  },
+  "other": "Other",
+  "@other": {
+    "description": "Collector interface: Other"
+  },
+  "noFormalSchooling": "No formal schooling",
+  "@noFormalSchooling": {
+    "description": "Collector interface: No formal schooling"
+  },
+  "primary": "Primary",
+  "@primary": {
+    "description": "Collector interface: Primary"
+  },
+  "secondary": "Secondary",
+  "@secondary": {
+    "description": "Collector interface: Secondary"
+  },
+  "higherEducation": "Higher education",
+  "@higherEducation": {
+    "description": "Collector interface: Higher education"
+  },
+  "employed": "Employed",
+  "@employed": {
+    "description": "Collector interface: Employed"
+  },
+  "selfEmployed": "Self-employed",
+  "@selfEmployed": {
+    "description": "Collector interface: Self-employed"
+  },
+  "student": "Student",
+  "@student": {
+    "description": "Collector interface: Student"
+  },
+  "homemakerCareWork": "Homemaker/care work",
+  "@homemakerCareWork": {
+    "description": "Collector interface: Homemaker/care work"
+  },
+  "notCurrentlyEmployed": "Not currently employed",
+  "@notCurrentlyEmployed": {
+    "description": "Collector interface: Not currently employed"
+  },
+  "retired": "Retired",
+  "@retired": {
+    "description": "Collector interface: Retired"
+  },
+  "neverUsed": "Never used",
+  "@neverUsed": {
+    "description": "Collector interface: Never used"
+  },
+  "formerUser": "Former user",
+  "@formerUser": {
+    "description": "Collector interface: Former user"
+  },
+  "currentUser": "Current user",
+  "@currentUser": {
+    "description": "Collector interface: Current user"
+  },
+  "smoked": "Smoked",
+  "@smoked": {
+    "description": "Collector interface: Smoked"
+  },
+  "smokeless": "Smokeless",
+  "@smokeless": {
+    "description": "Collector interface: Smokeless"
+  },
+  "both": "Both",
+  "@both": {
+    "description": "Collector interface: Both"
+  },
+  "daily": "Daily",
+  "@daily": {
+    "description": "Collector interface: Daily"
+  },
+  "lessThanDaily": "Less than daily",
+  "@lessThanDaily": {
+    "description": "Collector interface: Less than daily"
+  },
+  "lessThanWeekly": "Less than weekly",
+  "@lessThanWeekly": {
+    "description": "Collector interface: Less than weekly"
+  },
+  "frequency13DaysWeek": "1–3 days/week",
+  "@frequency13DaysWeek": {
+    "description": "Collector interface: 1–3 days/week"
+  },
+  "frequency4DaysWeek": "4+ days/week",
+  "@frequency4DaysWeek": {
+    "description": "Collector interface: 4+ days/week"
+  },
+  "never": "Never",
+  "@never": {
+    "description": "Collector interface: Never"
+  },
+  "frequency12Days": "1–2 days",
+  "@frequency12Days": {
+    "description": "Collector interface: 1–2 days"
+  },
+  "frequency34Days": "3–4 days",
+  "@frequency34Days": {
+    "description": "Collector interface: 3–4 days"
+  },
+  "frequency56Days": "5–6 days",
+  "@frequency56Days": {
+    "description": "Collector interface: 5–6 days"
+  },
+  "everyDay": "Every day",
+  "@everyDay": {
+    "description": "Collector interface: Every day"
+  },
+  "yes": "Yes",
+  "@yes": {
+    "description": "Collector interface: Yes"
+  },
+  "no": "No",
+  "@no": {
+    "description": "Collector interface: No"
+  },
+  "donTKnow": "Don’t know",
+  "@donTKnow": {
+    "description": "Collector interface: Don’t know"
+  },
+  "declined": "Declined",
+  "@declined": {
+    "description": "Collector interface: Declined"
+  },
+  "unableToMeasure": "Unable to measure",
+  "@unableToMeasure": {
+    "description": "Collector interface: Unable to measure"
+  },
+  "ncdRiskQuestionnaire": "NCD risk questionnaire",
+  "@ncdRiskQuestionnaire": {
+    "description": "Collector interface: NCD risk questionnaire"
+  },
+  "interviewQuestions1Of2LeaveSensitiveAnswersBlankIfTheParticipantDeclines": "Interview questions · 1 of 2. Leave sensitive answers blank if the participant declines.",
+  "@interviewQuestions1Of2LeaveSensitiveAnswersBlankIfTheParticipantDeclines": {
+    "description": "Collector interface: Interview questions · 1 of 2. Leave sensitive answers blank if the participant declines."
+  },
+  "ageYears": "Age (years)",
+  "@ageYears": {
+    "description": "Collector interface: Age (years)"
+  },
+  "employmentWorkCategory": "Employment/work category",
+  "@employmentWorkCategory": {
+    "description": "Collector interface: Employment/work category"
+  },
+  "typeOfTobacco": "Type of tobacco",
+  "@typeOfTobacco": {
+    "description": "Collector interface: Type of tobacco"
+  },
+  "alcoholUseInThePast30Days": "Alcohol use in the past 30 days",
+  "@alcoholUseInThePast30Days": {
+    "description": "Collector interface: Alcohol use in the past 30 days"
+  },
+  "inThePast7DaysHowOftenDidTheParticipantHave": "In the past 7 days, how often did the participant have:",
+  "@inThePast7DaysHowOftenDidTheParticipantHave": {
+    "description": "Collector interface: In the past 7 days, how often did the participant have:"
+  },
+  "fruit": "Fruit",
+  "@fruit": {
+    "description": "Collector interface: Fruit"
+  },
+  "vegetables": "Vegetables",
+  "@vegetables": {
+    "description": "Collector interface: Vegetables"
+  },
+  "sugaryDrinks": "Sugary drinks",
+  "@sugaryDrinks": {
+    "description": "Collector interface: Sugary drinks"
+  },
+  "processedOrPackagedFoods": "Processed or packaged foods",
+  "@processedOrPackagedFoods": {
+    "description": "Collector interface: Processed or packaged foods"
+  },
+  "moderateOrHigherActivity": "Moderate-or-higher activity",
+  "@moderateOrHigherActivity": {
+    "description": "Collector interface: Moderate-or-higher activity"
+  },
+  "usualActiveMinutesPerDay": "Usual active minutes per day",
+  "@usualActiveMinutesPerDay": {
+    "description": "Collector interface: Usual active minutes per day"
+  },
+  "usualSleepHoursPerNight": "Usual sleep hours per night",
+  "@usualSleepHoursPerNight": {
+    "description": "Collector interface: Usual sleep hours per night"
+  },
+  "knownDiagnosis": "Known diagnosis",
+  "@knownDiagnosis": {
+    "description": "Collector interface: Known diagnosis"
+  },
+  "hasADoctorOrHealthProfessionalEverToldTheParticipantTheyHave": "Has a doctor or health professional ever told the participant they have:",
+  "@hasADoctorOrHealthProfessionalEverToldTheParticipantTheyHave": {
+    "description": "Collector interface: Has a doctor or health professional ever told the participant they have:"
+  },
+  "continueToMeasurements": "Continue to measurements",
+  "@continueToMeasurements": {
+    "description": "Collector interface: Continue to measurements"
+  },
+  "measurements2Of2RecordBothBloodPressureReadings": "Measurements · 2 of 2. Record both blood-pressure readings.",
+  "@measurements2Of2RecordBothBloodPressureReadings": {
+    "description": "Collector interface: Measurements · 2 of 2. Record both blood-pressure readings."
+  },
+  "bodyMeasurements": "Body measurements",
+  "@bodyMeasurements": {
+    "description": "Collector interface: Body measurements"
+  },
+  "heightCm": "Height (cm)",
+  "@heightCm": {
+    "description": "Collector interface: Height (cm)"
+  },
+  "weightKg": "Weight (kg)",
+  "@weightKg": {
+    "description": "Collector interface: Weight (kg)"
+  },
+  "waistCircumferenceCm": "Waist circumference (cm)",
+  "@waistCircumferenceCm": {
+    "description": "Collector interface: Waist circumference (cm)"
+  },
+  "hipCircumferenceCm": "Hip circumference (cm)",
+  "@hipCircumferenceCm": {
+    "description": "Collector interface: Hip circumference (cm)"
+  },
+  "bloodPressure": "Blood pressure",
+  "@bloodPressure": {
+    "description": "Collector interface: Blood pressure"
+  },
+  "recordTwoSeatedReadingsInMmhg": "Record two seated readings in mmHg.",
+  "@recordTwoSeatedReadingsInMmhg": {
+    "description": "Collector interface: Record two seated readings in mmHg."
+  },
+  "reading1": "Reading 1",
+  "@reading1": {
+    "description": "Collector interface: Reading 1"
+  },
+  "reading2": "Reading 2",
+  "@reading2": {
+    "description": "Collector interface: Reading 2"
+  },
+  "reviewQuestionnaire": "Review questionnaire",
+  "@reviewQuestionnaire": {
+    "description": "Collector interface: Review questionnaire"
+  },
+  "measured": "Measured",
+  "@measured": {
+    "description": "Collector interface: Measured"
+  },
+  "selectAnAnswer": "Select an answer.",
+  "@selectAnAnswer": {
+    "description": "Collector interface: Select an answer."
+  },
+  "optionalLeaveBlankIfDeclined": "Optional — leave blank if declined.",
+  "@optionalLeaveBlankIfDeclined": {
+    "description": "Collector interface: Optional — leave blank if declined."
+  },
+  "systolicMustBeGreaterThanDiastolic": "Systolic must be greater than diastolic.",
+  "@systolicMustBeGreaterThanDiastolic": {
+    "description": "Collector interface: Systolic must be greater than diastolic."
+  },
+  "enterAValue": "Enter a value.",
+  "@enterAValue": {
+    "description": "Collector interface: Enter a value."
+  },
+  "returnHome": "Return home",
+  "@returnHome": {
+    "description": "Collector interface: Return home"
+  },
+  "viewSubmission": "View submission",
+  "@viewSubmission": {
+    "description": "Collector interface: View submission"
+  },
+  "thisEntryRemainsSafelyStoredOnThisDeviceAndWillSyncWhenAvailable": "This entry remains safely stored on this device and will sync when available.",
+  "@thisEntryRemainsSafelyStoredOnThisDeviceAndWillSyncWhenAvailable": {
+    "description": "Collector interface: This entry remains safely stored on this device and will sync when available."
+  },
+  "signInIsNotConfiguredContactYourAdministrator": "Sign-in is not configured. Contact your administrator.",
+  "@signInIsNotConfiguredContactYourAdministrator": {
+    "description": "Collector interface: Sign-in is not configured. Contact your administrator."
+  },
+  "theQrCodeIsInvalidAskYourAdministratorForANewOne": "The QR code is invalid. Ask your administrator for a new one.",
+  "@theQrCodeIsInvalidAskYourAdministratorForANewOne": {
+    "description": "Collector interface: The QR code is invalid. Ask your administrator for a new one."
+  },
+  "qrSignInWasCancelledScanYourSetupQrCodeToContinue": "QR sign-in was cancelled. Scan your setup QR code to continue.",
+  "@qrSignInWasCancelledScanYourSetupQrCodeToContinue": {
+    "description": "Collector interface: QR sign-in was cancelled. Scan your setup QR code to continue."
+  },
+  "cameraAccessIsNeededToScanYourSetupQrCodeAllowCameraAccessInAppSettings": "Camera access is needed to scan your setup QR code. Allow camera access in app settings.",
+  "@cameraAccessIsNeededToScanYourSetupQrCodeAllowCameraAccessInAppSettings": {
+    "description": "Collector interface: Camera access is needed to scan your setup QR code. Allow camera access in app settings."
+  },
+  "theCameraIsUnavailableCheckCameraAccessAndTryAgain": "The camera is unavailable. Check camera access and try again.",
+  "@theCameraIsUnavailableCheckCameraAccessAndTryAgain": {
+    "description": "Collector interface: The camera is unavailable. Check camera access and try again."
+  },
+  "scanTheCollectorSetupQrCodeProvidedByYourAdministratorToSignIn": "Scan the collector setup QR code provided by your administrator to sign in.",
+  "@scanTheCollectorSetupQrCodeProvidedByYourAdministratorToSignIn": {
+    "description": "Collector interface: Scan the collector setup QR code provided by your administrator to sign in."
+  },
+  "enterYourCollectorNumberAndAccessDetailsBeforeSwitchingPhonesSyncAnyPendingVisitsOnTheOldPhoneSigningInHereEndsItsSessionForThisNumber": "Enter your collector number and access details. Before switching phones, sync any pending visits on the old phone. Signing in here ends its session for this number.",
+  "@enterYourCollectorNumberAndAccessDetailsBeforeSwitchingPhonesSyncAnyPendingVisitsOnTheOldPhoneSigningInHereEndsItsSessionForThisNumber": {
+    "description": "Collector interface: Enter your collector number and access details. Before switching phones, sync any pending visits on the old phone. Signing in here ends its session for this number."
+  },
+  "enterTheCollectorNumberCreatedByTheAdministratorTheFirstPhoneToUseItBecomesTheAssignedPhone": "Enter the collector number created by the administrator. The first phone to use it becomes the assigned phone.",
+  "@enterTheCollectorNumberCreatedByTheAdministratorTheFirstPhoneToUseItBecomesTheAssignedPhone": {
+    "description": "Collector interface: Enter the collector number created by the administrator. The first phone to use it becomes the assigned phone."
+  },
+  "collectorNumber": "Collector number",
+  "@collectorNumber": {
+    "description": "Collector interface: Collector number"
+  },
+  "enterANumberSuchAs1": "Enter a number such as 1.",
+  "@enterANumberSuchAs1": {
+    "description": "Collector interface: Enter a number such as 1."
+  },
+  "serverAddress": "Server address",
+  "@serverAddress": {
+    "description": "Collector interface: Server address"
+  },
+  "homeServerAddress": "Home server address",
+  "@homeServerAddress": {
+    "description": "Collector interface: Home server address"
+  },
+  "enterTheServerAddressProvidedByTheAdministrator": "Enter the server address provided by the administrator.",
+  "@enterTheServerAddressProvidedByTheAdministrator": {
+    "description": "Collector interface: Enter the server address provided by the administrator."
+  },
+  "collectorAccessKey": "Collector access key",
+  "@collectorAccessKey": {
+    "description": "Collector interface: Collector access key"
+  },
+  "enterYourCollectorAccessKey": "Enter your collector access key.",
+  "@enterYourCollectorAccessKey": {
+    "description": "Collector interface: Enter your collector access key."
+  },
+  "scanning": "Scanning…",
+  "@scanning": {
+    "description": "Collector interface: Scanning…"
+  },
+  "scanSignInQr": "Scan sign-in QR",
+  "@scanSignInQr": {
+    "description": "Collector interface: Scan sign-in QR"
+  },
+  "scanCollectorSetupCode": "Scan collector setup code",
+  "@scanCollectorSetupCode": {
+    "description": "Collector interface: Scan collector setup code"
+  },
+  "cancelScan": "Cancel scan",
+  "@cancelScan": {
+    "description": "Collector interface: Cancel scan"
+  },
+  "theCameraIsUnavailablePleaseTryAgain": "The camera is unavailable. Please try again.",
+  "@theCameraIsUnavailablePleaseTryAgain": {
+    "description": "Collector interface: The camera is unavailable. Please try again."
+  },
+  "thisQrCodeCouldNotBeValidatedAsACollectorSetupCode": "This QR code could not be validated as a collector setup code.",
+  "@thisQrCodeCouldNotBeValidatedAsACollectorSetupCode": {
+    "description": "Collector interface: This QR code could not be validated as a collector setup code."
+  },
+  "cameraAccessIsNeededToScanASetupCodeAllowCameraAccessInYourDeviceSettingsThenTryAgain": "Camera access is needed to scan a setup code. Allow camera access in your device settings, then try again.",
+  "@cameraAccessIsNeededToScanASetupCodeAllowCameraAccessInYourDeviceSettingsThenTryAgain": {
+    "description": "Collector interface: Camera access is needed to scan a setup code. Allow camera access in your device settings, then try again."
+  },
+  "tryAgain": "Try again",
+  "@tryAgain": {
+    "description": "Collector interface: Try again"
+  },
+  "closeScanner": "Close scanner",
+  "@closeScanner": {
+    "description": "Collector interface: Close scanner"
+  },
+  "scanAgain": "Scan again",
+  "@scanAgain": {
+    "description": "Collector interface: Scan again"
+  },
+  "placeTheCollectorSetupQrCodeInsideTheFrame": "Place the collector setup QR code inside the frame.",
+  "@placeTheCollectorSetupQrCodeInsideTheFrame": {
+    "description": "Collector interface: Place the collector setup QR code inside the frame."
+  },
+  "collectorNumberMustBePositive": "Collector number must be positive.",
+  "@collectorNumberMustBePositive": {
+    "description": "Collector interface: Collector number must be positive."
+  },
+  "collectorNumberNotFound": "Collector number not found.",
+  "@collectorNumberNotFound": {
+    "description": "Collector interface: Collector number not found."
+  },
+  "thisCollectorNumberIsDisabled": "This collector number is disabled.",
+  "@thisCollectorNumberIsDisabled": {
+    "description": "Collector interface: This collector number is disabled."
+  },
+  "thisCollectorNumberIsAssignedToAnotherPhone": "This collector number is assigned to another phone.",
+  "@thisCollectorNumberIsAssignedToAnotherPhone": {
+    "description": "Collector interface: This collector number is assigned to another phone."
+  },
+  "collectorAccessCouldNotBeVerifiedTryAgain": "Collector access could not be verified. Try again.",
+  "@collectorAccessCouldNotBeVerifiedTryAgain": {
+    "description": "Collector interface: Collector access could not be verified. Try again."
+  },
+  "couldNotConnectCheckTheInternetAndTryAgain": "Could not connect. Check the internet and try again.",
+  "@couldNotConnectCheckTheInternetAndTryAgain": {
+    "description": "Collector interface: Could not connect. Check the internet and try again."
+  },
+  "savedSubmissionsCouldNotBeOpened": "Saved submissions could not be opened",
+  "@savedSubmissionsCouldNotBeOpened": {
+    "description": "Collector interface: Saved submissions could not be opened"
+  },
+  "theAppHasNotDiscardedOrReplacedTheSavedData": "The app has not discarded or replaced the saved data.",
+  "@theAppHasNotDiscardedOrReplacedTheSavedData": {
+    "description": "Collector interface: The app has not discarded or replaced the saved data."
+  },
+  "localDemoEnterYourAssignedCollectorNumber": "LOCAL DEMO · enter your assigned collector number",
+  "@localDemoEnterYourAssignedCollectorNumber": {
+    "description": "Collector interface: LOCAL DEMO · enter your assigned collector number"
+  },
+  "someSavedVisitDraftsCouldNotBeRestoredOtherSavedVisitsAreStillAvailable": "Some saved visit drafts could not be restored. Other saved visits are still available.",
+  "@someSavedVisitDraftsCouldNotBeRestoredOtherSavedVisitsAreStillAvailable": {
+    "description": "Collector interface: Some saved visit drafts could not be restored. Other saved visits are still available."
+  },
+  "enterAValidIndianMobileNumber": "Enter a valid Indian mobile number.",
+  "@enterAValidIndianMobileNumber": {
+    "description": "Collector interface: Enter a valid Indian mobile number."
+  },
+  "couldNotReserveTheVisitCheckTheInternetAndTryAgain": "Could not reserve the visit. Check the internet and try again.",
+  "@couldNotReserveTheVisitCheckTheInternetAndTryAgain": {
+    "description": "Collector interface: Could not reserve the visit. Check the internet and try again."
+  },
+  "thisCollectorNumberSignedInOnAnotherPhoneSignInAgainHereToTakeOver": "This collector number signed in on another phone. Sign in again here to take over.",
+  "@thisCollectorNumberSignedInOnAnotherPhoneSignInAgainHereToTakeOver": {
+    "description": "Collector interface: This collector number signed in on another phone. Sign in again here to take over."
+  },
+  "detailsDoNotMatch": "Details do not match",
+  "@detailsDoNotMatch": {
+    "description": "Collector interface: Details do not match"
+  },
+  "thisStudyIdAlreadyHasADifferentNameOrPhoneNumberPleaseConfirmTheDetailsWithTheParticipant": "This Study ID already has a different name or phone number. Please confirm the details with the participant.",
+  "@thisStudyIdAlreadyHasADifferentNameOrPhoneNumberPleaseConfirmTheDetailsWithTheParticipant": {
+    "description": "Collector interface: This Study ID already has a different name or phone number. Please confirm the details with the participant."
+  },
+  "goBack": "Go back",
+  "@goBack": {
+    "description": "Collector interface: Go back"
+  },
+  "detailsConfirmed": "Details confirmed",
+  "@detailsConfirmed": {
+    "description": "Collector interface: Details confirmed"
+  },
+  "noSavedVisitForThisStudyIdIsAvailableOnThisPhoneConnectToTheStudyArchiveOrSyncThePhoneThatHasItsHistory": "No saved visit for this Study ID is available on this phone. Connect to the study archive or sync the phone that has its history.",
+  "@noSavedVisitForThisStudyIdIsAvailableOnThisPhoneConnectToTheStudyArchiveOrSyncThePhoneThatHasItsHistory": {
+    "description": "Collector interface: No saved visit for this Study ID is available on this phone. Connect to the study archive or sync the phone that has its history."
+  },
+  "savedDetailsForThisStudyIdDoNotAgreeCheckTheStudyCardAndContactTheSupervisorBeforeContinuing": "Saved details for this Study ID do not agree. Check the study card and contact the supervisor before continuing.",
+  "@savedDetailsForThisStudyIdDoNotAgreeCheckTheStudyCardAndContactTheSupervisorBeforeContinuing": {
+    "description": "Collector interface: Saved details for this Study ID do not agree. Check the study card and contact the supervisor before continuing."
+  },
+  "visitAlreadyInProgress": "Visit already in progress",
+  "@visitAlreadyInProgress": {
+    "description": "Collector interface: Visit already in progress"
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Collector interface: Cancel"
+  },
+  "resumeVisit": "Resume visit",
+  "@resumeVisit": {
+    "description": "Collector interface: Resume visit"
+  },
+  "couldNotSaveAnInProgressCopyOnThisPhoneTheVisitWasNotOpened": "Could not save an in-progress copy on this phone. The visit was not opened.",
+  "@couldNotSaveAnInProgressCopyOnThisPhoneTheVisitWasNotOpened": {
+    "description": "Collector interface: Could not save an in-progress copy on this phone. The visit was not opened."
+  },
+  "couldNotSaveRecentAnswersOnThisPhoneCheckStorageBeforeContinuing": "Could not save recent answers on this phone. Check storage before continuing.",
+  "@couldNotSaveRecentAnswersOnThisPhoneCheckStorageBeforeContinuing": {
+    "description": "Collector interface: Could not save recent answers on this phone. Check storage before continuing."
+  },
+  "resumeASavedVisit": "Resume a saved visit",
+  "@resumeASavedVisit": {
+    "description": "Collector interface: Resume a saved visit"
+  },
+  "chooseParticipant": "Choose participant",
+  "@chooseParticipant": {
+    "description": "Collector interface: Choose participant"
+  },
+  "thisPhoneNumberMayBeSharedCheckTheParticipantSNameAndStudyIdBeforeContinuing": "This phone number may be shared. Check the participant’s name and Study ID before continuing.",
+  "@thisPhoneNumberMayBeSharedCheckTheParticipantSNameAndStudyIdBeforeContinuing": {
+    "description": "Collector interface: This phone number may be shared. Check the participant’s name and Study ID before continuing."
+  },
+  "recordSyncedSuccessfully": "Record synced successfully.",
+  "@recordSyncedSuccessfully": {
+    "description": "Collector interface: Record synced successfully."
+  },
+  "syncConflictEntryIsSavedOnThisPhoneAndNeedsAdminReview": "Sync conflict: entry is saved on this phone and needs admin review.",
+  "@syncConflictEntryIsSavedOnThisPhoneAndNeedsAdminReview": {
+    "description": "Collector interface: Sync conflict: entry is saved on this phone and needs admin review."
+  },
+  "couldNotSaveOnThisPhoneEntryWasNotSentTryAgain": "Could not save on this phone. Entry was not sent. Try again.",
+  "@couldNotSaveOnThisPhoneEntryWasNotSentTryAgain": {
+    "description": "Collector interface: Could not save on this phone. Entry was not sent. Try again."
+  },
+  "syncConflictReviewRequired": "Sync Conflict - Review Required",
+  "@syncConflictReviewRequired": {
+    "description": "Collector interface: Sync Conflict - Review Required"
+  },
+  "specifyStudyIdFromCardLogbook": "Specify Study ID from card/logbook",
+  "@specifyStudyIdFromCardLogbook": {
+    "description": "Collector interface: Specify Study ID from card/logbook"
+  },
+  "ifThisParticipantWasEnrolledOnAnotherCollectorSPhonePleaseSpecifyTheExactStudyIdFromTheirCardOrLogbook": "If this participant was enrolled on another collector's phone, please specify the exact Study ID from their card or logbook.",
+  "@ifThisParticipantWasEnrolledOnAnotherCollectorSPhonePleaseSpecifyTheExactStudyIdFromTheirCardOrLogbook": {
+    "description": "Collector interface: If this participant was enrolled on another collector's phone, please specify the exact Study ID from their card or logbook."
+  },
+  "invalidStudyIdFormatMustBeLikeC01000001OrP001": "Invalid Study ID format. Must be like C01-000001 or P001.",
+  "@invalidStudyIdFormatMustBeLikeC01000001OrP001": {
+    "description": "Collector interface: Invalid Study ID format. Must be like C01-000001 or P001."
+  },
+  "visitNumberMustBeAnIntegerOf2OrGreater": "Visit number must be an integer of 2 or greater.",
+  "@visitNumberMustBeAnIntegerOf2OrGreater": {
+    "description": "Collector interface: Visit number must be an integer of 2 or greater."
+  },
+  "confirmStudyId": "Confirm Study ID",
+  "@confirmStudyId": {
+    "description": "Collector interface: Confirm Study ID"
+  },
+  "specifyExistingStudyIdFromCardLogbook": "Specify existing Study ID (from card/logbook)",
+  "@specifyExistingStudyIdFromCardLogbook": {
+    "description": "Collector interface: Specify existing Study ID (from card/logbook)"
+  },
+  "conflictReview": "Conflict Review",
+  "@conflictReview": {
+    "description": "Collector interface: Conflict Review"
+  },
+  "aConflictHttp409OccurredWhileUploadingThisSubmissionToTheStudyServer": "A conflict (HTTP 409) occurred while uploading this submission to the study server.",
+  "@aConflictHttp409OccurredWhileUploadingThisSubmissionToTheStudyServer": {
+    "description": "Collector interface: A conflict (HTTP 409) occurred while uploading this submission to the study server."
+  },
+  "theEntryRemainsSafelyStoredLocallyOnThisPhoneYouCanManuallyRetryUploadingOnceServerSideConflictsAreAddressed": "The entry remains safely stored locally on this phone. You can manually retry uploading once server-side conflicts are addressed.",
+  "@theEntryRemainsSafelyStoredLocallyOnThisPhoneYouCanManuallyRetryUploadingOnceServerSideConflictsAreAddressed": {
+    "description": "Collector interface: The entry remains safely stored locally on this phone. You can manually retry uploading once server-side conflicts are addressed."
+  },
+  "close": "Close",
+  "@close": {
+    "description": "Collector interface: Close"
+  },
+  "retryUpload": "Retry Upload",
+  "@retryUpload": {
+    "description": "Collector interface: Retry Upload"
+  },
+  "editingSubmittedEntriesIsNotAvailableInThisDemo": "Editing submitted entries is not available in this demo.",
+  "@editingSubmittedEntriesIsNotAvailableInThisDemo": {
+    "description": "Collector interface: Editing submitted entries is not available in this demo."
+  },
+  "reviewConflict": "Review Conflict",
+  "@reviewConflict": {
+    "description": "Collector interface: Review Conflict"
+  },
+  "conflictRef": "Conflict Ref",
+  "@conflictRef": {
+    "description": "Collector interface: Conflict Ref"
+  },
+  "signInFailedCheckYourSetupCodeAndConnectionThenTryAgain": "Sign-in failed. Check your setup code and connection, then try again.",
+  "@signInFailedCheckYourSetupCodeAndConnectionThenTryAgain": {
+    "description": "Collector interface: Sign-in failed. Check your setup code and connection, then try again."
+  },
+  "yourEntryIsSavedOnThisPhoneContactTheAdministratorToResolveTheSyncConflictThenRetryUploading": "Your entry is saved on this phone. Contact the administrator to resolve the sync conflict, then retry uploading.",
+  "@yourEntryIsSavedOnThisPhoneContactTheAdministratorToResolveTheSyncConflictThenRetryUploading": {
+    "description": "Collector interface: Your entry is saved on this phone. Contact the administrator to resolve the sync conflict, then retry uploading."
+  },
+  "hello": "Hello, {name}",
+  "@hello": {
+    "description": "Collector interface: Hello, {name}",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "collector": "Collector {number}",
+  "@collector": {
+    "description": "Collector interface: Collector {number}",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "inProgressVisitsSaved": "{number} in-progress visits saved",
+  "@inProgressVisitsSaved": {
+    "description": "Collector interface: {number} in-progress visits saved",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "visit": "{id} · Visit {number}",
+  "@visit": {
+    "description": "Collector interface: {id} · Visit {number}",
+    "placeholders": {
+      "id": {
+        "type": "String"
+      },
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "visit2": "Visit {number}",
+  "@visit2": {
+    "description": "Collector interface: Visit {number}",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "nextVisit": "Next visit {number}",
+  "@nextVisit": {
+    "description": "Collector interface: Next visit {number}",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "visitForIsSaved": "Visit {number} for {name} is saved.",
+  "@visitForIsSaved": {
+    "description": "Collector interface: Visit {number} for {name} is saved.",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hasAnUnfinishedVisitResumeItBeforeStartingAnotherVisit": "{name} has an unfinished Visit {number}. Resume it before starting another visit.",
+  "@hasAnUnfinishedVisitResumeItBeforeStartingAnotherVisit": {
+    "description": "Collector interface: {name} has an unfinished Visit {number}. Resume it before starting another visit.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "thisPhoneIsLockedToCollectorYouCannotSwitchCollectorAccounts": "This phone is locked to Collector {number}. You cannot switch collector accounts.",
+  "@thisPhoneIsLockedToCollectorYouCannotSwitchCollectorAccounts": {
+    "description": "Collector interface: This phone is locked to Collector {number}. You cannot switch collector accounts.",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "status": "{label} status",
+  "@status": {
+    "description": "Collector interface: {label} status",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "systolic": "{label} systolic",
+  "@systolic": {
+    "description": "Collector interface: {label} systolic",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "diastolic": "{label} diastolic",
+  "@diastolic": {
+    "description": "Collector interface: {label} diastolic",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "enterAValueFromTo": "Enter a value from {min} to {max}.",
+  "@enterAValueFromTo": {
+    "description": "Collector interface: Enter a value from {min} to {max}.",
+    "placeholders": {
+      "min": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      }
+    }
+  },
+  "years": "{number} years",
+  "@years": {
+    "description": "Collector interface: {number} years",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "hours": "{number} hours",
+  "@hours": {
+    "description": "Collector interface: {number} hours",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "minWeek": "{number} min/week",
+  "@minWeek": {
+    "description": "Collector interface: {number} min/week",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "submissionId2": "Submission ID: {id}",
+  "@submissionId2": {
+    "description": "Collector interface: Submission ID: {id}",
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "conflictReference": "Conflict Reference: {id}",
+  "@conflictReference": {
+    "description": "Collector interface: Conflict Reference: {id}",
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "conflictDetails": "Conflict Details: {details}",
+  "@conflictDetails": {
+    "description": "Collector interface: Conflict Details: {details}",
+    "placeholders": {
+      "details": {
+        "type": "String"
+      }
+    }
+  },
+  "participant2": "Participant: {name} ({id})",
+  "@participant2": {
+    "description": "Collector interface: Participant: {name} ({id})",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "visit3": "Visit: {number}",
+  "@visit3": {
+    "description": "Collector interface: Visit: {number}",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "recorded2": "Recorded: {time}",
+  "@recorded2": {
+    "description": "Collector interface: Recorded: {time}",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  }
+}

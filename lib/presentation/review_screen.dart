@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/collector_language.dart';
+
 import '../domain/ncd_questionnaire.dart';
 import 'app_strings.dart';
 import 'presentation_widgets.dart';
@@ -42,9 +44,13 @@ class ReviewScreen extends StatelessWidget {
             title: 'Participant',
             onEdit: onEditParticipant,
             children: [
-              _ReviewLine('Study ID', participant.studyId),
-              _ReviewLine('Name', participant.name),
-              _ReviewLine('Phone', participant.phone),
+              _ReviewLine(
+                'Study ID',
+                participant.studyId,
+                translateValue: false,
+              ),
+              _ReviewLine('Name', participant.name, translateValue: false),
+              _ReviewLine('Phone', participant.phone, translateValue: false),
             ],
           ),
           const SizedBox(height: 12),
@@ -241,6 +247,7 @@ class ReviewScreen extends StatelessWidget {
                 optionalNote?.trim().isNotEmpty == true
                     ? optionalNote!.trim()
                     : 'Not provided',
+                translateValue: optionalNote?.trim().isNotEmpty != true,
               ),
             ],
           ),
@@ -248,7 +255,7 @@ class ReviewScreen extends StatelessWidget {
           FilledButton.icon(
             onPressed: isSubmitting ? null : onSubmit,
             icon: const Icon(Icons.check_circle_outline),
-            label: Text(
+            label: CollectorText(
               isSubmitting ? 'Saving...' : AppStrings.reviewAndSubmit,
             ),
           ),
@@ -379,13 +386,16 @@ class _ReviewCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
+                child: CollectorText(
                   title,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
               if (onEdit != null)
-                TextButton(onPressed: onEdit, child: const Text('Edit')),
+                TextButton(
+                  onPressed: onEdit,
+                  child: const CollectorText('Edit'),
+                ),
             ],
           ),
           const Divider(),
@@ -397,10 +407,11 @@ class _ReviewCard extends StatelessWidget {
 }
 
 class _ReviewLine extends StatelessWidget {
-  const _ReviewLine(this.label, this.value);
+  const _ReviewLine(this.label, this.value, {this.translateValue = true});
 
   final String label;
   final String value;
+  final bool translateValue;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -408,9 +419,14 @@ class _ReviewLine extends StatelessWidget {
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(width: 130, child: Text(label)),
+        Expanded(flex: 2, child: CollectorText(label)),
+        const SizedBox(width: 12),
         Expanded(
-          child: Text(value, style: Theme.of(context).textTheme.titleSmall),
+          flex: 3,
+          child: Text(
+            translateValue ? collectorText(context, value) : value,
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
         ),
       ],
     ),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/collector_language.dart';
+
 import 'app_strings.dart';
 import 'presentation_widgets.dart';
 import 'view_models.dart';
@@ -53,14 +55,14 @@ class VisitConfirmationScreen extends StatelessWidget {
                     backgroundColor: Theme.of(context)
                         .colorScheme
                         .primaryContainer,
-                    child: Text('$proposedVisitNumber'),
+                    child: CollectorText('$proposedVisitNumber'),
                   ),
-                  title: Text(
+                  title: CollectorText(
                     proposedVisitNumber == 1
                         ? 'First visit'
                         : 'Visit $proposedVisitNumber',
                   ),
-                  subtitle: Text(
+                  subtitle: CollectorText(
                     proposedVisitNumber == 1
                         ? 'A new participant number has been assigned.'
                         : 'Updated automatically from this participant’s history.',
@@ -69,7 +71,7 @@ class VisitConfirmationScreen extends StatelessWidget {
                 const SizedBox(height: 20),
                 FilledButton(
                   onPressed: onConfirm,
-                  child: const Text('Confirm and continue'),
+                  child: const CollectorText('Confirm and continue'),
                 ),
               ],
             ),
@@ -92,7 +94,7 @@ class _Detail extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: Theme.of(context).textTheme.labelLarge),
+        CollectorText(label, style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 4),
         Text(value, style: Theme.of(context).textTheme.titleMedium),
       ],
