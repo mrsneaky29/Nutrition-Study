@@ -199,9 +199,9 @@ AccessKeys _publicAccessKeysFromEnvironment(Map<String, String> environment) {
   }
   final rawCollectors = (environment['LOCAL_SYNC_COLLECTOR_KEYS'] ?? '').trim();
   final rawAdmin = (environment['LOCAL_SYNC_ADMIN_KEY'] ?? '').trim();
-  if (rawCollectors.isEmpty || rawAdmin.length < _publicMinKeyLength) {
+  if (rawCollectors.isEmpty || rawAdmin.isEmpty) {
     throw const FormatException(
-      'Public mode requires LOCAL_SYNC_COLLECTOR_KEYS and a LOCAL_SYNC_ADMIN_KEY of at least 32 characters.',
+      'Public mode requires LOCAL_SYNC_COLLECTOR_KEYS and a non-empty LOCAL_SYNC_ADMIN_KEY.',
     );
   }
 

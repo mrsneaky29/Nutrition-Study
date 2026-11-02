@@ -442,6 +442,29 @@ void main() {
       expect(keys.allowedOrigins, {publicOrigin});
     });
 
+    test('public mode accepts a non-empty admin password without length rules', () {
+      final keys = AccessKeys.fromEnvironment({
+        'LOCAL_SYNC_PUBLIC_MODE': 'true',
+        'LOCAL_SYNC_COLLECTOR_KEYS': 'C007:$publicCollector',
+        'LOCAL_SYNC_ADMIN_KEY': 'x',
+        'LOCAL_SYNC_ALLOWED_ORIGINS': publicOrigin,
+      });
+      expect(keys!.isAdmin('x'), isTrue);
+      expect(keys.isCollector('x'), isFalse);
+    });
+
+    test('public mode still rejects an empty admin password', () {
+      expect(
+        () => AccessKeys.fromEnvironment({
+          'LOCAL_SYNC_PUBLIC_MODE': 'true',
+          'LOCAL_SYNC_COLLECTOR_KEYS': 'C007:$publicCollector',
+          'LOCAL_SYNC_ADMIN_KEY': '',
+          'LOCAL_SYNC_ALLOWED_ORIGINS': publicOrigin,
+        }),
+        throwsFormatException,
+      );
+    });
+
     test('public mode accepts C1000+ collector IDs', () {
       final keys = AccessKeys.fromEnvironment({
         'LOCAL_SYNC_PUBLIC_MODE': 'true',

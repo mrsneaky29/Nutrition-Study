@@ -123,6 +123,22 @@ The script generates:
 - 5 unique collector keys, bound to identifiers `C001` through `C005`.
 - Restrictive file permissions: mode `0640`, owner `root`, group `plus5-vps` (or `0600` if owned directly by `plus5-vps`).
 
+### Change the administrator password
+
+For an existing deployment, run the guarded helper in a private terminal:
+
+```bash
+sudo python3 tool/vps/change-admin-password.py
+```
+
+It prompts twice without echoing the password. Public-mode administrator passwords
+have no minimum length or composition rule; a non-empty value is required.
+The helper preserves collector credentials, changes only the administrator key
+and its server length check, restarts the API, verifies the new credential and
+rejection of the old credential, and restores the previous configuration on
+failure. Passwords are never printed, passed in command arguments, or committed.
+This change does not affect the strong generated collector-key requirements.
+
 ### Step 2: Edit Allowed Origin
 Open `/etc/plus5-vps/local-sync.env` (or `/etc/plus5-vps/env`) and configure your exact production admin web origin:
 

@@ -134,7 +134,8 @@ The +9 update requires no change to this server architecture.
 The production DigitalOcean Ubuntu VPS is active. The backend listens on
 `127.0.0.1:8787` behind Caddy, which provides public HTTPS at the API and admin
 domains above. Public mode requires HTTPS, an exact allowed admin origin,
-distinct collector credentials, and an admin key, each at least 32 characters.
+distinct collector credentials of at least 32 characters, and a separate,
+non-empty admin password. The administrator chooses its length and composition.
 Never expose port 8787 directly or relax these checks for testing.
 
 Automated +6 QR/authentication and UI tests passed (35 tests), public HTTPS
