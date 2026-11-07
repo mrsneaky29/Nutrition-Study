@@ -1725,6 +1725,14 @@ class LocalRecordStore {
       // server-derived and never accepted as part of a stored record.
       final edit = Map<String, dynamic>.of(incoming)..remove('researchRisk');
       final record = _normalizeRecord(edit, allowMissingAuditFields: true);
+      if (incoming.containsKey('revision') &&
+          record['revision'] != existing['revision']) {
+        throw const ApiException(
+          HttpStatus.conflict,
+          'This visit changed. Refresh it before editing again.',
+          errorName: 'stale_revision',
+        );
+      }
       if (record['id'] != id) {
         throw const ApiException(
           HttpStatus.badRequest,

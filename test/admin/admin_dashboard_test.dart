@@ -88,7 +88,7 @@ void main() {
   });
 
   testWidgets(
-    'admin edit does NOT erase questionnaire responses (regression test)',
+    'admin can correct questionnaire measurements and preserve other answers',
     (tester) async {
       tester.view.physicalSize = const Size(1440, 1200);
       tester.view.devicePixelRatio = 1;
@@ -98,6 +98,7 @@ void main() {
       final repository = createAdminDemoRepository();
       final original = (await repository.getById('visit-101', admin))!;
       const questionnaire = NcdQuestionnaire(
+        version: 3,
         studySite: 'Site B',
         age: 52,
         sex: 'male',
@@ -113,6 +114,7 @@ void main() {
         heightCm: 175.0,
         weightKg: 78.0,
         waistCm: 88.0,
+        hipCm: 100.0,
         bpOneSystolic: 125,
         bpOneDiastolic: 82,
         bpTwoSystolic: 122,
@@ -151,6 +153,30 @@ void main() {
       tester.widget<Checkbox>(confirmationCheckbox).onChanged!(true);
       await tester.pump();
 
+      Future<void> enterMeasurement(String label, String value) async {
+        final field = find.byWidgetPredicate(
+          (widget) => widget is TextField && widget.decoration?.labelText == label,
+        );
+        await tester.ensureVisible(field);
+        await tester.enterText(field, value);
+      }
+
+      await enterMeasurement('Height (cm)', '180');
+      await enterMeasurement('Weight (kg)', '81');
+      await enterMeasurement('Waist circumference (cm)', '90');
+      await enterMeasurement('Hip circumference (cm)', '105');
+      await enterMeasurement('BP1 systolic (mmHg)', '80');
+      await tester.tap(find.text('Save changes'));
+      await tester.pumpAndSettle();
+      expect(find.text('Systolic must be greater than diastolic.'), findsOneWidget);
+      await enterMeasurement('BP1 systolic (mmHg)', '130');
+      await enterMeasurement('BP1 diastolic (mmHg)', '84');
+      await enterMeasurement('BP2 systolic (mmHg)', '126');
+      await enterMeasurement('BP2 diastolic (mmHg)', '82');
+      await enterMeasurement('Active days per week', '5');
+      await enterMeasurement('Active minutes per day', '30');
+      await enterMeasurement('Sleep hours per night', '7.5');
+
       await tester.ensureVisible(find.text('Save changes'));
       await tester.tap(find.text('Save changes'));
       await tester.pumpAndSettle();
@@ -161,6 +187,12 @@ void main() {
       expect(saved.questionnaire, isNotNull);
       expect(saved.questionnaire!.age, 52);
       expect(saved.questionnaire!.studySite, 'Site B');
+      expect(saved.questionnaire!.bmi, closeTo(25, 0.001));
+      expect(saved.questionnaire!.waistHipRatio, closeTo(90 / 105, 0.001));
+      expect(saved.questionnaire!.averageSystolic, 128);
+      expect(saved.questionnaire!.averageDiastolic, 83);
+      expect(saved.questionnaire!.weeklyActiveMinutes, 150);
+      expect(saved.questionnaire!.sleepHours, 7.5);
     },
   );
 

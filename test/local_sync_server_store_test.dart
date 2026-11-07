@@ -491,6 +491,14 @@ void main() {
         final edited = Map<String, dynamic>.from(original)
           ..['stepTwoPlaceholderNote'] = 'Corrected by admin';
         final correction = await store.replaceAdmin('visit-1', edited);
+        await expectLater(
+          store.replaceAdmin('visit-1', edited),
+          throwsA(isA<ApiException>().having(
+            (error) => error.errorName,
+            'errorName',
+            'stale_revision',
+          )),
+        );
 
         final retry = await store.upsertCollector(_submission());
 

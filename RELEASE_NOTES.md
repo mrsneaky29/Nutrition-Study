@@ -1,5 +1,12 @@
 # Vivayu 1.0.3+11
 
+## Admin measurement corrections
+
+The admin visit editor can correct body measurements, both blood-pressure
+readings, activity and sleep values, and the optional Step 2 measurement. BMI,
+waist-to-hip ratio, average blood pressure, and weekly activity recalculate on
+save. Admin edits detect when another change has already updated the visit.
+
 ## Backend scoring update
 
 Admin record listings now include research estimates for existing and newly

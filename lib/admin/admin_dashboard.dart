@@ -11,6 +11,7 @@ import '../domain/participant_profile.dart';
 import '../domain/study_configuration.dart';
 import '../domain/visit_record.dart';
 import 'local_api_visit_repository.dart';
+import 'questionnaire_measurement_editor.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({
@@ -1201,6 +1202,8 @@ class _RecordEditSheet extends StatefulWidget {
 
 class _RecordEditSheetState extends State<_RecordEditSheet> {
   final _formKey = GlobalKey<FormState>();
+  final _questionnaireMeasurementsKey =
+      GlobalKey<QuestionnaireMeasurementEditorState>();
   late final TextEditingController _name;
   late final TextEditingController _phone;
   late final TextEditingController _visit;
@@ -1401,6 +1404,13 @@ class _RecordEditSheetState extends State<_RecordEditSheet> {
                           controlAffinity: ListTileControlAffinity.leading,
                         ),
                       ],
+                      if (widget.record.questionnaire case final questionnaire?) ...[
+                        const SizedBox(height: 22),
+                        QuestionnaireMeasurementEditor(
+                          questionnaire,
+                          key: _questionnaireMeasurementsKey,
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       const _EditorSectionTitle('Optional Step 2 measurement'),
                       SwitchListTile.adaptive(
@@ -1423,7 +1433,7 @@ class _RecordEditSheetState extends State<_RecordEditSheet> {
                           validator: (value) {
                             if (!_hasMeasurement) return null;
                             final number = num.tryParse((value ?? '').trim());
-                            return number == null || number < 0
+                            return number == null || !number.isFinite || number < 0
                                 ? 'Enter a zero or positive number.'
                                 : null;
                           },
@@ -1508,6 +1518,7 @@ class _RecordEditSheetState extends State<_RecordEditSheet> {
           ? StepTwoMeasurement(
               value: num.parse(_measurementValue.text.trim()),
               unit: _measurementUnit.text.trim(),
+              recordedAt: widget.record.stepTwoMeasurement?.recordedAt,
               note: _measurementNote.text.trim().isEmpty
                   ? null
                   : _measurementNote.text.trim(),
@@ -1541,7 +1552,9 @@ class _RecordEditSheetState extends State<_RecordEditSheet> {
           confirmation: confirmation,
           stepTwoMeasurement: measurement,
           stepTwoPlaceholderNote: widget.record.stepTwoPlaceholderNote,
-          questionnaire: widget.record.questionnaire,
+          questionnaire: _questionnaireMeasurementsKey.currentState
+                  ?.editedQuestionnaire() ??
+              widget.record.questionnaire,
           archiveMetadata: widget.record.archiveMetadata,
           submittedAt: _status == VisitStatus.submitted
               ? widget.record.submittedAt ?? DateTime.now().toUtc()
