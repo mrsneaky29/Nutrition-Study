@@ -53,7 +53,24 @@ void main() {
       id: 'legacy',
       key: 'legacy-research-key',
       visitNumber: 2,
-      questionnaire: _validQuestionnaireV2(),
+      questionnaire: {
+        ..._validQuestionnaireV2(age: 60),
+        'education': 'secondary',
+        'tobaccoUse': 'current',
+        'hypertensionDiagnosis': 'no',
+        'diabetesDiagnosis': 'no',
+        'cardiovascularDiagnosis': 'no',
+      },
+    ));
+    await store.upsertCollector(_submission(
+      id: 'partial',
+      key: 'partial-research-key',
+      visitNumber: 3,
+      questionnaire: {
+        ...questionnaire,
+        'walkingOneKm': null,
+        'diabetesDiagnosis': 'dont_know',
+      },
     ));
 
     final uri = Uri.parse(
@@ -66,14 +83,34 @@ void main() {
     expect(scored.headers['cache-control'], 'no-store');
     final response = jsonDecode(scored.body) as Map;
     expect(response['researchOnly'], true);
+    expect(response['modelVersion'], 'ihds-37382-expanded-v1');
     final outcomes = response['outcomes'] as Map;
     expect(outcomes['hypertension'], {'status': 'prior_diagnosis'});
     expect(outcomes['diabetes']['probability'], closeTo(0.16921784113134816, 1e-12));
     expect(outcomes['heart_disease']['probability'], closeTo(0.05000013827963625, 1e-12));
-    expect(store.researchRisk('legacy')['outcomes'], containsPair(
-      'diabetes',
-      containsPair('status', 'insufficient_information'),
-    ));
+    final listing = await http.get(
+      uri.replace(path: '/records'),
+      headers: {'x-local-sync-key': adminKey},
+    );
+    expect(listing.statusCode, HttpStatus.ok);
+    expect(listing.headers['cache-control'], 'no-store');
+    final results = {
+      for (final record in jsonDecode(listing.body) as List)
+        record['id']: record['researchRisk'] as Map,
+    };
+    expect(results.keys, unorderedEquals(['visit-1', 'legacy', 'partial']));
+    expect(results['visit-1'], response);
+    final legacy = results['legacy']!;
+    expect(legacy['modelVersion'], 'ihds-37382-original-v1');
+    expect(legacy['outcomes']['hypertension']['probability'], closeTo(0.1742946794827845, 1e-12));
+    expect(legacy['outcomes']['diabetes']['probability'], closeTo(0.08691144859120474, 1e-12));
+    expect(legacy['outcomes']['heart_disease']['probability'], closeTo(0.02948025130799688, 1e-12));
+    final partial = results['partial']!;
+    expect(partial['modelVersion'], 'ihds-37382-original-v1');
+    expect(partial['outcomes']['hypertension']['status'], 'prior_diagnosis');
+    expect(partial['outcomes']['diabetes']['status'], 'insufficient_information');
+    expect(partial['outcomes']['heart_disease']['status'], 'estimated');
+    expect(await store.recordsFile.readAsString(), isNot(contains('"researchRisk"')));
   });
 
   group('LocalRecordStore core persistence and idempotency', () {

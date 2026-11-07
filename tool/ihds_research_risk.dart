@@ -10,36 +10,64 @@ Map<String, Object?> scoreIhdsResearchRisk(Object? questionnaire) {
   final walking = q['walkingOneKm'];
   final alcohol = q['drinksAlcohol'];
   final worked = q['workedPastYear'];
-  final history = {
-    'hypertension': q['hypertensionDiagnosis'],
-    'diabetes': q['diabetesDiagnosis'],
-    'heart_disease': q['heartDiseaseDiagnosis'],
+  const diagnosisFields = {
+    'hypertension': 'hypertensionDiagnosis',
+    'diabetes': 'diabetesDiagnosis',
+    'heart_disease': 'heartDiseaseDiagnosis',
   };
+  final history = diagnosisFields.map(
+    (outcome, field) => MapEntry(outcome, q[field]),
+  );
   final missing = <String>[
-    if (age is! int || age < 18 || age > 105) 'age',
+    if (age is! num ||
+        !age.isFinite ||
+        age != age.truncate() ||
+        age < 18 ||
+        age > 105)
+      'age',
     if (sex != 'male' && sex != 'female') 'sex',
     if (!{'none', 'primary', 'secondary', 'higher'}.contains(education))
       'education',
     if (!{'never', 'former', 'current'}.contains(tobacco)) 'tobaccoUse',
-    if (!{'no_difficulty', 'with_difficulty', 'unable'}.contains(walking))
-      'walkingOneKm',
-    if (!_isYesNo(alcohol)) 'drinksAlcohol',
-    if (!_isYesNo(worked)) 'workedPastYear',
-    if (!_isYesNo(history['hypertension'])) 'hypertensionDiagnosis',
-    if (!_isYesNo(history['diabetes'])) 'diabetesDiagnosis',
-    if (!_isYesNo(history['heart_disease'])) 'heartDiseaseDiagnosis',
   ];
+  final expanded =
+      {'no_difficulty', 'with_difficulty', 'unable'}.contains(walking) &&
+      _isYesNo(alcohol) &&
+      _isYesNo(worked) &&
+      history.values.every(_isYesNo);
+  final modelVersion = expanded
+      ? 'ihds-37382-expanded-v1'
+      : 'ihds-37382-original-v1';
+  final weights = expanded ? _weights : _originalWeights;
+  // A negative answer to the older, broader question can rule out a reported
+  // heart disease diagnosis. A positive answer may describe another condition.
+  final fallbackHeartHistory =
+      (q['schemaVersion'] == null ||
+              q['schemaVersion'] == 1 ||
+              q['schemaVersion'] == 2 ||
+              q['schemaVersion'] == 3) &&
+          history['heart_disease'] == null &&
+          q['cardiovascularDiagnosis'] == 'no'
+      ? 'no'
+      : history['heart_disease'];
   final outcomes = <String, Object?>{};
-  for (final entry in _weights.entries) {
-    outcomes[entry.key] = history[entry.key] == 'yes'
+  for (final entry in weights.entries) {
+    final diagnosis = entry.key == 'heart_disease' && !expanded
+        ? fallbackHeartHistory
+        : history[entry.key];
+    final needed = [
+      ...missing,
+      if (!_isYesNo(diagnosis)) diagnosisFields[entry.key]!,
+    ];
+    outcomes[entry.key] = diagnosis == 'yes'
         ? {'status': 'prior_diagnosis'}
-        : missing.isNotEmpty
-        ? {'status': 'insufficient_information', 'fields': missing}
+        : needed.isNotEmpty
+        ? {'status': 'insufficient_information', 'fields': needed}
         : {
             'status': 'estimated',
             'probability': _probability(
               entry.value,
-              (age as int),
+              (age as num).toInt(),
               sex == 'female',
               education,
               tobacco == 'current',
@@ -51,7 +79,7 @@ Map<String, Object?> scoreIhdsResearchRisk(Object? questionnaire) {
           };
   }
   return {
-    'modelVersion': 'ihds-37382-expanded-v1',
+    'modelVersion': modelVersion,
     'researchOnly': true,
     'outcome': 'Newly reported doctor diagnosis by follow-up',
     'baseline': '2004-05',
@@ -140,5 +168,39 @@ const _weights = <String, Map<String, double>>{
     'worked': -0.3348085456802617,
     'prior_hypertension': 0.8290545588469215,
     'prior_diabetes': 0.6211009092672143,
+  },
+};
+
+// Coefficients from audits/ihds-risk-model/results.json.
+const _originalWeights = <String, Map<String, double>>{
+  'hypertension': {
+    'intercept': -2.8310608000282835,
+    'age_centered_scaled': 1.002220593866191,
+    'age_centered_scaled_squared': -0.6288209513120964,
+    'female': 0.5962563979193463,
+    'primary': 0.4713480314568989,
+    'secondary': 0.6871817221073598,
+    'higher': 0.8467461562898123,
+    'current_tobacco': -0.3517729071462222,
+  },
+  'diabetes': {
+    'intercept': -3.365801178292736,
+    'age_centered_scaled': 1.1389840188962232,
+    'age_centered_scaled_squared': -0.8904980368380072,
+    'female': 0.1100394029948272,
+    'primary': 0.7542734490306184,
+    'secondary': 1.112275547438619,
+    'higher': 1.1267592851899098,
+    'current_tobacco': -0.5553243697394119,
+  },
+  'heart_disease': {
+    'intercept': -3.8608258868729943,
+    'age_centered_scaled': 0.8740299357080684,
+    'age_centered_scaled_squared': -0.5050058007088354,
+    'female': -0.035754297265363805,
+    'primary': 0.34391125810779766,
+    'secondary': 0.4033674069933089,
+    'higher': 0.4113849893586978,
+    'current_tobacco': -0.311661899941523,
   },
 };

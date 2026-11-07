@@ -235,7 +235,18 @@ void main() {
     final missingRecord = (await repository.getById('visit-102', admin))!;
     await repository.saveAdminRecord(
       actor: admin,
-      record: completeRecord.copyWith(questionnaire: _completeQuestionnaire),
+      record: completeRecord.copyWith(
+        questionnaire: _completeQuestionnaire,
+        researchRisk: ResearchRisk.fromMap({
+          'researchOnly': true,
+          'modelVersion': 'ihds-37382-original-v1',
+          'outcomes': {
+            'hypertension': {'status': 'estimated', 'probability': 0.174},
+            'diabetes': {'status': 'insufficient_information'},
+            'heart_disease': {'status': 'prior_diagnosis'},
+          },
+        }),
+      ),
     );
     await repository.saveAdminRecord(
       actor: admin,
@@ -249,6 +260,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('Research estimates'), findsOneWidget);
+    expect(find.text('Original model'), findsOneWidget);
+    expect(find.text('Hypertension · 17.4%'), findsOneWidget);
+    expect(find.text('Diabetes · Insufficient information'), findsOneWidget);
+    expect(find.text('Heart disease · Previously reported'), findsOneWidget);
     await tester.tap(find.text('Demo Participant 1').first);
     await tester.pumpAndSettle();
 

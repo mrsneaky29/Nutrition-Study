@@ -522,7 +522,12 @@ Future<void> handleRequest(
             segments[1] == 'records');
     if (request.method == 'GET' && isRecordsRoute) {
       _requireAdminAccess(isAdmin);
-      await _writeJson(request.response, HttpStatus.ok, store.records());
+      request.response.headers.set('Cache-Control', 'no-store');
+      await _writeJson(
+        request.response,
+        HttpStatus.ok,
+        store.records(includeResearchRisk: true),
+      );
       return;
     }
     if (request.method == 'GET' &&
@@ -1199,13 +1204,18 @@ class LocalRecordStore {
     return loaded;
   }
 
-  List<Map<String, dynamic>> records() {
+  List<Map<String, dynamic>> records({bool includeResearchRisk = false}) {
     final values = _records.values.map(_clone).toList()
       ..sort(
         (left, right) => (right['updatedAt'] as String).compareTo(
           left['updatedAt'] as String,
         ),
       );
+    if (includeResearchRisk) {
+      for (final record in values) {
+        record['researchRisk'] = scoreIhdsResearchRisk(record['questionnaire']);
+      }
+    }
     return values;
   }
 
@@ -1711,7 +1721,10 @@ class LocalRecordStore {
       if (existing == null) {
         throw const ApiException(HttpStatus.notFound, 'Record not found.');
       }
-      final record = _normalizeRecord(incoming, allowMissingAuditFields: true);
+      // Admin clients may send back a record from the listing. Scores are
+      // server-derived and never accepted as part of a stored record.
+      final edit = Map<String, dynamic>.of(incoming)..remove('researchRisk');
+      final record = _normalizeRecord(edit, allowMissingAuditFields: true);
       if (record['id'] != id) {
         throw const ApiException(
           HttpStatus.badRequest,

@@ -838,6 +838,7 @@ class _RecordsPanel extends StatelessWidget {
   final ValueChanged<_RecordFilter> onFilterChanged;
   final ValueChanged<VisitRecord> onRecordSelected;
   final VoidCallback? onExport;
+  bool get _hasResearchRisk => records.any((record) => record.researchRisk != null);
 
   @override
   Widget build(BuildContext context) => Card(
@@ -939,15 +940,22 @@ class _RecordsPanel extends StatelessWidget {
                 ),
                 horizontalMargin: 14,
                 columnSpacing: 28,
-                columns: const [
-                  DataColumn(label: Text('Participant')),
-                  DataColumn(label: Text('Phone')),
-                  DataColumn(label: Text('Visit')),
-                  DataColumn(label: Text('Collector')),
-                  DataColumn(label: Text('Status')),
-                  DataColumn(label: Text('Review')),
-                  DataColumn(label: Text('Last updated')),
-                  DataColumn(label: Text('')),
+                dataRowMaxHeight: _hasResearchRisk ? 112 : null,
+                columns: [
+                  const DataColumn(label: Text('Participant')),
+                  if (_hasResearchRisk)
+                    const DataColumn(
+                      label: Text('Research estimates'),
+                      tooltip:
+                          'IHDS estimates for newly reported diagnoses. Research only.',
+                    ),
+                  const DataColumn(label: Text('Phone')),
+                  const DataColumn(label: Text('Visit')),
+                  const DataColumn(label: Text('Collector')),
+                  const DataColumn(label: Text('Status')),
+                  const DataColumn(label: Text('Review')),
+                  const DataColumn(label: Text('Last updated')),
+                  const DataColumn(label: Text('')),
                 ],
                 rows: records
                     .map(
@@ -955,6 +963,10 @@ class _RecordsPanel extends StatelessWidget {
                         onSelectChanged: (_) => onRecordSelected(record),
                         cells: [
                           DataCell(_ParticipantCell(record: record)),
+                          if (_hasResearchRisk)
+                            DataCell(
+                              _ResearchRiskSummary(risk: record.researchRisk),
+                            ),
                           DataCell(Text(record.participant.indianPhone)),
                           DataCell(Text('Visit ${record.visitNumber}')),
                           DataCell(Text(record.collectorId)),
@@ -999,6 +1011,46 @@ class _ParticipantCell extends StatelessWidget {
       ],
     ),
   );
+}
+
+class _ResearchRiskSummary extends StatelessWidget {
+  const _ResearchRiskSummary({required this.risk});
+  final ResearchRisk? risk;
+
+  @override
+  Widget build(BuildContext context) {
+    final score = risk;
+    if (score == null) return const Text('Unavailable');
+    final model = switch (score.modelVersion) {
+      'ihds-37382-expanded-v1' => 'Expanded model',
+      'ihds-37382-original-v1' => 'Original model',
+      _ => score.modelVersion,
+    };
+    const labels = {
+      'hypertension': 'Hypertension',
+      'diabetes': 'Diabetes',
+      'heart_disease': 'Heart disease',
+    };
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(model, style: Theme.of(context).textTheme.labelSmall),
+        for (final entry in labels.entries)
+          Text('${entry.value} · ${_outcomeLabel(score.outcomes[entry.key])}'),
+      ],
+    );
+  }
+
+  static String _outcomeLabel(({String status, double? probability})? result) =>
+      switch (result) {
+        (status: 'estimated', probability: final double value) =>
+          '${(100 * value).toStringAsFixed(1)}%',
+        (status: 'prior_diagnosis', probability: _) => 'Previously reported',
+        (status: 'insufficient_information', probability: _) =>
+          'Insufficient information',
+        _ => 'Unavailable',
+      };
 }
 
 class _StatusPill extends StatelessWidget {
@@ -1678,6 +1730,17 @@ class _RecordDetailsState extends State<_RecordDetails> {
                         ? 'Reviewed'
                         : 'Pending review',
                   ),
+                  if (record.researchRisk != null) ...[
+                    const Divider(height: 28),
+                    const Text(
+                      'IHDS research estimates',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const Text(
+                      'Estimates for newly reported diagnoses over the historical IHDS follow-up.',
+                    ),
+                    _ResearchRiskSummary(risk: record.researchRisk),
+                  ],
                   if (record.questionnaire case final questionnaire?) ...[
                     const Divider(height: 28),
                     const Text(

@@ -9,6 +9,42 @@ enum SyncState { localOnly, pending, synced, failed }
 /// A non-judgmental administrative review marker. It carries no rating.
 enum NeutralReviewState { pending, reviewed }
 
+/// A read-only estimate returned by the admin API.
+class ResearchRisk {
+  const ResearchRisk(this.modelVersion, this.outcomes);
+
+  final String modelVersion;
+  final Map<String, ({String status, double? probability})> outcomes;
+
+  static ResearchRisk? fromMap(Object? value) {
+    if (value is! Map || value['researchOnly'] != true) return null;
+    final version = value['modelVersion'];
+    final rawOutcomes = value['outcomes'];
+    if (version is! String || rawOutcomes is! Map) return null;
+    final outcomes = <String, ({String status, double? probability})>{};
+    for (final name in ['hypertension', 'diabetes', 'heart_disease']) {
+      final outcome = rawOutcomes[name];
+      if (outcome is! Map) continue;
+      final status = outcome['status'];
+      final probability = outcome['probability'];
+      if (status == 'estimated' &&
+          probability is num &&
+          probability.isFinite &&
+          probability >= 0 &&
+          probability <= 1) {
+        outcomes[name] = (
+          status: 'estimated',
+          probability: probability.toDouble(),
+        );
+      } else if (status == 'prior_diagnosis' ||
+          status == 'insufficient_information') {
+        outcomes[name] = (status: status as String, probability: null);
+      }
+    }
+    return ResearchRisk(version, Map.unmodifiable(outcomes));
+  }
+}
+
 /// A staff member must repeat these details before a visit can be submitted.
 class VisitConfirmation {
   VisitConfirmation({
@@ -80,6 +116,7 @@ class VisitRecord {
     this.stepTwoMeasurement,
     this.stepTwoPlaceholderNote,
     this.questionnaire,
+    this.researchRisk,
     this.archiveMetadata,
     this.submittedAt,
   }) : assert(id != ''),
@@ -106,6 +143,7 @@ class VisitRecord {
   /// placeholder. This deliberately has no questionnaire interpretation.
   final String? stepTwoPlaceholderNote;
   final NcdQuestionnaire? questionnaire;
+  final ResearchRisk? researchRisk;
   final ArchiveMetadata? archiveMetadata;
   final DateTime? submittedAt;
 
@@ -131,6 +169,7 @@ class VisitRecord {
     bool clearStepTwoPlaceholderNote = false,
     NcdQuestionnaire? questionnaire,
     bool clearQuestionnaire = false,
+    ResearchRisk? researchRisk,
     ArchiveMetadata? archiveMetadata,
     bool clearArchiveMetadata = false,
     DateTime? submittedAt,
@@ -159,6 +198,7 @@ class VisitRecord {
       questionnaire: clearQuestionnaire
           ? null
           : questionnaire ?? this.questionnaire,
+      researchRisk: researchRisk ?? this.researchRisk,
       archiveMetadata: clearArchiveMetadata
           ? null
           : archiveMetadata ?? this.archiveMetadata,

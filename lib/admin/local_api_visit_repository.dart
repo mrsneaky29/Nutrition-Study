@@ -415,6 +415,7 @@ class LocalApiVisitRepository
           : _measurement(_map(measurementJson)),
       stepTwoPlaceholderNote: _nullableString(json['stepTwoPlaceholderNote']),
       questionnaire: NcdQuestionnaire.fromMap(json['questionnaire']),
+      researchRisk: ResearchRisk.fromMap(json['researchRisk']),
       archiveMetadata: archive == null
           ? null
           : ArchiveMetadata(

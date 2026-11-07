@@ -1,5 +1,15 @@
 # Vivayu 1.0.3+11
 
+## Backend scoring update
+
+Admin record listings now include research estimates for existing and newly
+submitted visits. The backend uses the original four-input model when the
+expanded model's answers are incomplete. The result names the selected model.
+Required unknown answers and previous diagnoses produce a status for the
+affected outcome. Scoring runs entirely on the server.
+The admin console shows these estimates and the model used beside each visit.
+The existing Android build supports this backend update.
+
 The collector questionnaire adds four optional items in English and Telugu.
 
 - Difficulty walking one kilometre
