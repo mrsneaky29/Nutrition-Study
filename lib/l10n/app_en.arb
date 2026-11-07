@@ -1,5 +1,12 @@
 {
   "@@locale": "en",
+  "researchWorkPastYear": "Any farm, business, wage or salaried work in the past year?",
+  "researchAlcoholUse": "Does the participant drink alcohol, even occasionally?",
+  "researchWalkingOneKm": "Difficulty walking 1 km",
+  "researchNoWalkingDifficulty": "No difficulty",
+  "researchWalkingWithDifficulty": "Can walk with difficulty",
+  "researchUnableToWalkOneKm": "Unable to walk 1 km",
+  "researchHeartDisease": "Heart disease",
   "continueLabel": "Continue",
   "@continueLabel": {
     "description": "Collector interface: Continue"

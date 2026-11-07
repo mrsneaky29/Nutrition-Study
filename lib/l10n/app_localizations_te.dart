@@ -10,6 +10,29 @@ class AppLocalizationsTe extends AppLocalizations {
   AppLocalizationsTe([String locale = 'te']) : super(locale);
 
   @override
+  String get researchWorkPastYear =>
+      'గత సంవత్సరంలో వ్యవసాయం, వ్యాపారం, కూలి లేదా జీతం వచ్చే పని ఏదైనా చేశారా?';
+
+  @override
+  String get researchAlcoholUse =>
+      'పాల్గొనేవారు అప్పుడప్పుడైనా మద్యం తాగుతారా?';
+
+  @override
+  String get researchWalkingOneKm => 'ఒక కిలోమీటరు నడవడంలో ఇబ్బంది';
+
+  @override
+  String get researchNoWalkingDifficulty => 'ఇబ్బంది లేదు';
+
+  @override
+  String get researchWalkingWithDifficulty => 'ఇబ్బందితో నడవగలరు';
+
+  @override
+  String get researchUnableToWalkOneKm => 'ఒక కిలోమీటరు నడవలేరు';
+
+  @override
+  String get researchHeartDisease => 'గుండె జబ్బు';
+
+  @override
   String get continueLabel => 'కొనసాగించండి';
 
   @override

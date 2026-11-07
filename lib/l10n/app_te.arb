@@ -1,5 +1,12 @@
 {
   "@@locale": "te",
+  "researchWorkPastYear": "గత సంవత్సరంలో వ్యవసాయం, వ్యాపారం, కూలి లేదా జీతం వచ్చే పని ఏదైనా చేశారా?",
+  "researchAlcoholUse": "పాల్గొనేవారు అప్పుడప్పుడైనా మద్యం తాగుతారా?",
+  "researchWalkingOneKm": "ఒక కిలోమీటరు నడవడంలో ఇబ్బంది",
+  "researchNoWalkingDifficulty": "ఇబ్బంది లేదు",
+  "researchWalkingWithDifficulty": "ఇబ్బందితో నడవగలరు",
+  "researchUnableToWalkOneKm": "ఒక కిలోమీటరు నడవలేరు",
+  "researchHeartDisease": "గుండె జబ్బు",
   "continueLabel": "కొనసాగించండి",
   "signOut": "సైన్ అవుట్",
   "studyId": "అధ్యయన ID",

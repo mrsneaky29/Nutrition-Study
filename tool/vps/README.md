@@ -191,6 +191,10 @@ Verify that all required commands, directories, and port statuses indicate `OK`.
 ### Step 2: Import Release Archive
 Release archives are standard `.tar.gz` bundles produced by the project build pipeline containing `tool/local_sync_server.dart`, `build/admin_web/index.html`, and supporting source files.
 
+For questionnaire schema 4, include `tool/ihds_research_risk.dart` alongside the server and release the backend before distributing the updated questionnaire. The backend accepts questionnaire versions 1–4.
+
+An administrator can request an on-demand research estimate with `GET /records/<record-id>/research-risk` using the existing `x-local-sync-key` admin authentication. The response includes the IHDS model version and an outcome status of `estimated`, `prior_diagnosis`, or `insufficient_information`. The response is marked research-only and is excluded from the stored visit and collector response. The estimates describe newly reported diagnoses between the historical IHDS waves.
+
 ```bash
 sudo bash tool/vps/import-release.sh /path/to/release-2026-09-26.tar.gz
 ```

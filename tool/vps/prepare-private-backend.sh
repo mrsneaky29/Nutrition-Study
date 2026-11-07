@@ -15,6 +15,7 @@ fi
 mkdir -p "$release/tool/vps"
 chmod 0755 "$release" "$release/tool" "$release/tool/vps"
 install -m 0644 "$source_dir/tool/local_sync_server.dart" "$release/tool/local_sync_server.dart"
+install -m 0644 "$source_dir/tool/ihds_research_risk.dart" "$release/tool/ihds_research_risk.dart"
 install -m 0755 "$source_dir/tool/vps/backup-state.sh" "$release/tool/vps/backup-state.sh"
 install -m 0755 "$source_dir/tool/vps/offsite-backup.sh" "$release/tool/vps/offsite-backup.sh"
 install -m 0640 "$env_file" /etc/plus5-vps/local-sync.env.predeployment-template

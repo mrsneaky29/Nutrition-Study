@@ -69,6 +69,11 @@ class ReviewScreen extends StatelessWidget {
                 'Work category',
                 _answer(q, q?.employment, _employmentLabels),
               ),
+              if (q != null && q.version >= 4)
+                _ReviewLine(
+                  'Any farm, business, wage or salaried work in the past year?',
+                  _answer(q, q.workedPastYear, _diagnosisLabels),
+                ),
             ],
           ),
           _ReviewCard(
@@ -102,6 +107,11 @@ class ReviewScreen extends StatelessWidget {
                 'Alcohol in past 30 days',
                 _answer(q, q?.alcoholPast30Days, _yesNoLabels),
               ),
+              if (q != null && q.version >= 4)
+                _ReviewLine(
+                  'Does the participant drink alcohol, even occasionally?',
+                  _answer(q, q.drinksAlcohol, _diagnosisLabels),
+                ),
               _ReviewLine(
                 'Alcohol frequency',
                 _conditionalAnswer(
@@ -149,6 +159,16 @@ class ReviewScreen extends StatelessWidget {
                 'Sleep per night',
                 q == null ? _notCompleted : '${_number(q.sleepHours)} hours',
               ),
+              if (q != null && q.version >= 4)
+                _ReviewLine(
+                  'Difficulty walking 1 km',
+                  _answer(q, q.walkingOneKm, const {
+                    'no_difficulty': 'No difficulty',
+                    'with_difficulty': 'Can walk with difficulty',
+                    'unable': 'Unable to walk 1 km',
+                    'dont_know': 'Don’t know',
+                  }),
+                ),
             ],
           ),
           _ReviewCard(
@@ -170,6 +190,11 @@ class ReviewScreen extends StatelessWidget {
                 'Cardiovascular disease',
                 _answer(q, q?.cardiovascularDiagnosis, _diagnosisLabels),
               ),
+              if (q != null && q.version >= 4)
+                _ReviewLine(
+                  'Heart disease',
+                  _answer(q, q.heartDiseaseDiagnosis, _diagnosisLabels),
+                ),
             ],
           ),
           _ReviewCard(

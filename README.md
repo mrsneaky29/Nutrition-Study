@@ -4,10 +4,9 @@ Vivayu is the project name for this nutrition-study collector app and admin
 console. Existing package identifiers, deployment domains and historical release
 names are preserved for compatibility.
 
-The visible app/console name is exactly `Vivayu`, without a version suffix.
-The Vivayu +9 collector distribution uses internal version `1.0.2+10` so it can
-update an older signed build. Existing installed phone apps are not changed
-until the user installs the new package.
+The visible app and console name is `Vivayu`. The current collector release is
+`1.0.3+11`. See the [release notes](RELEASE_NOTES.md) for the schema 4
+questionnaire and the IHDS backend scorer.
 
 ## Vivayu +9 — English / తెలుగు
 

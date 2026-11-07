@@ -291,7 +291,7 @@ void main() {
       await tester.tap(submit);
       await tester.pumpAndSettle();
       expect(completed?.sex, 'female');
-      expect(completed?.version, 3);
+      expect(completed?.version, 4);
       expect(completed?.heightMissingReason, 'declined');
       expect(completed?.waistHipRatio, .8);
       expect(tester.takeException(), isNull);

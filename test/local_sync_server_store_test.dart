@@ -20,6 +20,62 @@ void main() {
     await dataDirectory.delete(recursive: true);
   });
 
+  test('scores submitted research inputs only for admins', () async {
+    const adminKey = 'admin-research-test-key';
+    const collectorKey = 'collector-research-test-key';
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((request) => handleRequest(
+      request,
+      store,
+      const AccessKeys(collectorKeys: {collectorKey}, admin: adminKey),
+    ));
+
+    final questionnaire = {
+      ..._validQuestionnaireV2(age: 60),
+      'schemaVersion': 4,
+      'hipCm': 100,
+      'waistHipRatio': 0.8,
+      'education': 'secondary',
+      'tobaccoUse': 'current',
+      'walkingOneKm': 'with_difficulty',
+      'drinksAlcohol': 'yes',
+      'workedPastYear': 'yes',
+      'hypertensionDiagnosis': 'yes',
+      'diabetesDiagnosis': 'no',
+      'heartDiseaseDiagnosis': 'no',
+    };
+    await _expectBadRequest(store.upsertCollector(_submission(
+      questionnaire: {...questionnaire, 'walkingOneKm': 'invalid'},
+    )));
+    await store.upsertCollector(_submission(questionnaire: questionnaire));
+    await store.upsertCollector(_submission(
+      id: 'legacy',
+      key: 'legacy-research-key',
+      visitNumber: 2,
+      questionnaire: _validQuestionnaireV2(),
+    ));
+
+    final uri = Uri.parse(
+      'http://127.0.0.1:${server.port}/records/visit-1/research-risk',
+    );
+    final denied = await http.get(uri, headers: {'x-local-sync-key': collectorKey});
+    expect(denied.statusCode, HttpStatus.forbidden);
+    final scored = await http.get(uri, headers: {'x-local-sync-key': adminKey});
+    expect(scored.statusCode, HttpStatus.ok);
+    expect(scored.headers['cache-control'], 'no-store');
+    final response = jsonDecode(scored.body) as Map;
+    expect(response['researchOnly'], true);
+    final outcomes = response['outcomes'] as Map;
+    expect(outcomes['hypertension'], {'status': 'prior_diagnosis'});
+    expect(outcomes['diabetes']['probability'], closeTo(0.16921784113134816, 1e-12));
+    expect(outcomes['heart_disease']['probability'], closeTo(0.05000013827963625, 1e-12));
+    expect(store.researchRisk('legacy')['outcomes'], containsPair(
+      'diabetes',
+      containsPair('status', 'insufficient_information'),
+    ));
+  });
+
   group('LocalRecordStore core persistence and idempotency', () {
     test(
       'resolving a reused record ID cannot overwrite an accepted visit',

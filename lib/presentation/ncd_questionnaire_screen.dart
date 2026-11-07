@@ -60,6 +60,10 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
   String? _diabetes;
   String? _cholesterol;
   String? _cardiovascular;
+  String? _walkingOneKm;
+  String? _drinksAlcohol;
+  String? _workedPastYear;
+  String? _heartDisease;
   String? _heightMissingReason;
   String? _weightMissingReason;
   String? _waistMissingReason;
@@ -91,6 +95,10 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
     _diabetes = choice('diabetes');
     _cholesterol = choice('cholesterol');
     _cardiovascular = choice('cardiovascular');
+    _walkingOneKm = choice('walkingOneKm');
+    _drinksAlcohol = choice('drinksAlcohol');
+    _workedPastYear = choice('workedPastYear');
+    _heartDisease = choice('heartDiseaseDiagnosis');
     _heightMissingReason = choice('heightMissingReason');
     _weightMissingReason = choice('weightMissingReason');
     _waistMissingReason = choice('waistMissingReason');
@@ -146,6 +154,10 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
     'diabetes': _diabetes,
     'cholesterol': _cholesterol,
     'cardiovascular': _cardiovascular,
+    'walkingOneKm': _walkingOneKm,
+    'drinksAlcohol': _drinksAlcohol,
+    'workedPastYear': _workedPastYear,
+    'heartDiseaseDiagnosis': _heartDisease,
     'height': _height.text,
     'weight': _weight.text,
     'waist': _waist.text,
@@ -240,6 +252,10 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
         diabetesDiagnosis: _diabetes,
         highCholesterolDiagnosis: _cholesterol,
         cardiovascularDiagnosis: _cardiovascular,
+        walkingOneKm: _walkingOneKm,
+        drinksAlcohol: _drinksAlcohol,
+        workedPastYear: _workedPastYear,
+        heartDiseaseDiagnosis: _heartDisease,
       ),
     );
   }
@@ -294,6 +310,12 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
               'unemployed': 'Not currently employed',
               'retired': 'Retired',
             }, (v) => _setDraft(() => _employment = v)),
+            _optionalSelect(
+              'Any farm, business, wage or salaried work in the past year?',
+              _workedPastYear,
+              _diagnosisOptions,
+              (v) => _setDraft(() => _workedPastYear = v),
+            ),
           ]),
           _section(context, 'Tobacco and alcohol', [
             _optionalSelect(
@@ -323,6 +345,12 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
                 'less_than_daily': 'Less than daily',
               }, (v) => _setDraft(() => _tobaccoFrequency = v)),
             ],
+            _optionalSelect(
+              'Does the participant drink alcohol, even occasionally?',
+              _drinksAlcohol,
+              _diagnosisOptions,
+              (v) => _setDraft(() => _drinksAlcohol = v),
+            ),
             _optionalSelect(
               'Alcohol use in the past 30 days',
               _alcohol,
@@ -382,6 +410,17 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
               max: 1440,
             ),
             _decimalField(_sleep, 'Usual sleep hours per night', max: 24),
+            _optionalSelect(
+              'Difficulty walking 1 km',
+              _walkingOneKm,
+              const {
+                'no_difficulty': 'No difficulty',
+                'with_difficulty': 'Can walk with difficulty',
+                'unable': 'Unable to walk 1 km',
+                'dont_know': 'Don’t know',
+              },
+              (v) => _setDraft(() => _walkingOneKm = v),
+            ),
           ]),
           _section(context, 'Known diagnosis', [
             const Padding(
@@ -413,6 +452,12 @@ class _NcdQuestionnaireScreenState extends State<NcdQuestionnaireScreen> {
               _cardiovascular,
               _diagnosisOptions,
               (v) => _setDraft(() => _cardiovascular = v),
+            ),
+            _optionalSelect(
+              'Heart disease',
+              _heartDisease,
+              _diagnosisOptions,
+              (v) => _setDraft(() => _heartDisease = v),
             ),
           ]),
           const SizedBox(height: 8),

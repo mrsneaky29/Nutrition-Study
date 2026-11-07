@@ -6,7 +6,7 @@
 class NcdQuestionnaire {
   /// Persisted with each response so later questionnaire revisions remain
   /// distinguishable in operational records and analysis exports.
-  static const int schemaVersion = 3;
+  static const int schemaVersion = 4;
 
   const NcdQuestionnaire({
     this.version = 2,
@@ -45,6 +45,10 @@ class NcdQuestionnaire {
     this.diabetesDiagnosis,
     this.highCholesterolDiagnosis,
     this.cardiovascularDiagnosis,
+    this.walkingOneKm,
+    this.drinksAlcohol,
+    this.workedPastYear,
+    this.heartDiseaseDiagnosis,
   }) : assert(version >= 1 && version <= schemaVersion),
        assert(age >= 18),
        assert(heightCm == null || heightCm > 0),
@@ -52,7 +56,7 @@ class NcdQuestionnaire {
        assert(waistCm == null || waistCm > 0),
        assert(hipCm == null || hipCm > 0),
        assert(
-         version != 3 ||
+         version < 3 ||
              (hipCm != null
                  ? hipMissingReason == null
                  : hipMissingReason == 'unable' ||
@@ -91,7 +95,7 @@ class NcdQuestionnaire {
                    bpTwoMissingReason == 'declined',
        );
 
-  /// Existing constructors/records remain version 2; the current form emits 3.
+  /// Legacy records retain their original version.
   final int version;
   final String studySite;
   final int age;
@@ -130,6 +134,10 @@ class NcdQuestionnaire {
   final String? diabetesDiagnosis;
   final String? highCholesterolDiagnosis;
   final String? cardiovascularDiagnosis;
+  final String? walkingOneKm;
+  final String? drinksAlcohol;
+  final String? workedPastYear;
+  final String? heartDiseaseDiagnosis;
 
   int get weeklyActiveMinutes => activeDaysPerWeek * activeMinutesPerDay;
   double? get bmi => heightCm == null || weightKg == null
@@ -169,6 +177,12 @@ class NcdQuestionnaire {
     'diabetesDiagnosis': diabetesDiagnosis,
     'highCholesterolDiagnosis': highCholesterolDiagnosis,
     'cardiovascularDiagnosis': cardiovascularDiagnosis,
+    if (version >= 4) ...{
+      'walkingOneKm': walkingOneKm,
+      'drinksAlcohol': drinksAlcohol,
+      'workedPastYear': workedPastYear,
+      'heartDiseaseDiagnosis': heartDiseaseDiagnosis,
+    },
     'heightCm': heightCm,
     'weightKg': weightKg,
     'waistCm': waistCm,
@@ -198,8 +212,7 @@ class NcdQuestionnaire {
     final json = Map<String, Object?>.from(value);
     // Unversioned and v1 records always had numeric measurements.
     final version = json['schemaVersion'] ?? 1;
-    if (version is! int ||
-        (version != 1 && version != 2 && version != schemaVersion)) {
+    if (version is! int || version < 1 || version > schemaVersion) {
       return null;
     }
     try {
@@ -294,6 +307,12 @@ class NcdQuestionnaire {
         diabetesDiagnosis: _optional(json, 'diabetesDiagnosis'),
         highCholesterolDiagnosis: _optional(json, 'highCholesterolDiagnosis'),
         cardiovascularDiagnosis: _optional(json, 'cardiovascularDiagnosis'),
+        walkingOneKm: version >= 4 ? _optional(json, 'walkingOneKm') : null,
+        drinksAlcohol: version >= 4 ? _optional(json, 'drinksAlcohol') : null,
+        workedPastYear: version >= 4 ? _optional(json, 'workedPastYear') : null,
+        heartDiseaseDiagnosis: version >= 4
+            ? _optional(json, 'heartDiseaseDiagnosis')
+            : null,
       );
     } on FormatException {
       return null;

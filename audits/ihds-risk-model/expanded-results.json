@@ -1,0 +1,304 @@
+{
+  "study": "ICPSR 37382 V1 DS 3",
+  "baseline": "2004-05",
+  "follow_up": "2011-12",
+  "endpoint": "New household report of a doctor diagnosis, including reports coded cured",
+  "features": "See per-outcome weights. Each model uses the other two diagnosis histories.",
+  "l2": 0.0001,
+  "household_split_seed": 37382,
+  "panel_rows": 150983,
+  "adults_reinterviewed": 94816,
+  "adults_with_all_inputs": 94129,
+  "training_households": 27636,
+  "test_households": 6909,
+  "outcomes": {
+    "hypertension": {
+      "weights": {
+        "intercept": -2.566382769219719,
+        "age_centered_scaled": 0.9217228528246315,
+        "age_centered_scaled_squared": -0.6671649220689679,
+        "female": 0.45086526625614914,
+        "primary": 0.4183048910343817,
+        "secondary": 0.6017179537987926,
+        "higher": 0.757285816511393,
+        "current_tobacco": -0.31777256592827713,
+        "walk_difficulty": -0.06214079696154751,
+        "alcohol_use": 0.026318103473256922,
+        "worked": -0.2917539000515958,
+        "prior_diabetes": 0.9800458166255989,
+        "prior_heart_disease": 1.036990303906512
+      },
+      "gradient_steps": 8278,
+      "learning_rate": 1.1800884812455863,
+      "training_n": 73658,
+      "training_events": 3879,
+      "test_n": 18449,
+      "test_events": 940,
+      "test_model": {
+        "roc_auc": 0.7550355865615617,
+        "brier_score": 0.04615384211878885,
+        "log_loss": 0.1804686363508991,
+        "mean_prediction": 0.052477479486325834,
+        "observed_rate": 0.0509512710716028
+      },
+      "test_base_rate_model": {
+        "roc_auc": 0.5,
+        "brier_score": 0.04835816668202893,
+        "log_loss": 0.20133638080698535,
+        "mean_prediction": 0.05266230416248065,
+        "observed_rate": 0.0509512710716028
+      },
+      "test_calibration_by_risk_tenth": [
+        {
+          "n": 1845,
+          "predicted": 0.0054914375209075125,
+          "observed": 0.004878048780487805
+        },
+        {
+          "n": 1845,
+          "predicted": 0.009783664613060104,
+          "observed": 0.00975609756097561
+        },
+        {
+          "n": 1845,
+          "predicted": 0.014930340709607184,
+          "observed": 0.013550135501355014
+        },
+        {
+          "n": 1845,
+          "predicted": 0.021908202883178497,
+          "observed": 0.02005420054200542
+        },
+        {
+          "n": 1845,
+          "predicted": 0.0308828813929524,
+          "observed": 0.025474254742547425
+        },
+        {
+          "n": 1845,
+          "predicted": 0.0423855146151213,
+          "observed": 0.04336043360433604
+        },
+        {
+          "n": 1845,
+          "predicted": 0.05654015933217982,
+          "observed": 0.06016260162601626
+        },
+        {
+          "n": 1845,
+          "predicted": 0.0761429841215204,
+          "observed": 0.07425474254742548
+        },
+        {
+          "n": 1845,
+          "predicted": 0.102671274973989,
+          "observed": 0.10623306233062331
+        },
+        {
+          "n": 1844,
+          "predicted": 0.1640988340799257,
+          "observed": 0.15184381778741865
+        }
+      ],
+      "test_four_input_model": {
+        "roc_auc": 0.7477860018495047,
+        "brier_score": 0.04637030430903191,
+        "log_loss": 0.18176023239293884,
+        "mean_prediction": 0.05251670494496083,
+        "observed_rate": 0.0509512710716028
+      }
+    },
+    "diabetes": {
+      "weights": {
+        "intercept": -3.019486054298829,
+        "age_centered_scaled": 1.0071466456348683,
+        "age_centered_scaled_squared": -0.9591944835733529,
+        "female": -0.11342115445959562,
+        "primary": 0.6809077828696735,
+        "secondary": 1.0104231068751914,
+        "higher": 1.0083300375204902,
+        "current_tobacco": -0.5388840840480962,
+        "walk_difficulty": 0.1945578141681899,
+        "alcohol_use": 0.15253535268342786,
+        "worked": -0.38584642711964695,
+        "prior_hypertension": 0.8451660127964056,
+        "prior_heart_disease": 0.8795729011065627
+      },
+      "gradient_steps": 10022,
+      "learning_rate": 1.1869444471372868,
+      "training_n": 74452,
+      "training_events": 2042,
+      "test_n": 18672,
+      "test_events": 490,
+      "test_model": {
+        "roc_auc": 0.7907282151668279,
+        "brier_score": 0.024698371020623843,
+        "log_loss": 0.10671036314462083,
+        "mean_prediction": 0.02735818159639132,
+        "observed_rate": 0.026242502142245074
+      },
+      "test_base_rate_model": {
+        "roc_auc": 0.5,
+        "brier_score": 0.025555236417707093,
+        "log_loss": 0.12145434122561787,
+        "mean_prediction": 0.02742706710363724,
+        "observed_rate": 0.026242502142245074
+      },
+      "test_calibration_by_risk_tenth": [
+        {
+          "n": 1868,
+          "predicted": 0.0015527633786564159,
+          "observed": 0.0016059957173447537
+        },
+        {
+          "n": 1868,
+          "predicted": 0.0031386391244744107,
+          "observed": 0.0016059957173447537
+        },
+        {
+          "n": 1867,
+          "predicted": 0.005241905868763166,
+          "observed": 0.0032137118371719335
+        },
+        {
+          "n": 1867,
+          "predicted": 0.008424320234075973,
+          "observed": 0.005356186395286556
+        },
+        {
+          "n": 1867,
+          "predicted": 0.013023486704337861,
+          "observed": 0.016068559185859668
+        },
+        {
+          "n": 1867,
+          "predicted": 0.01917699120457058,
+          "observed": 0.01821103374397429
+        },
+        {
+          "n": 1867,
+          "predicted": 0.02711512960251154,
+          "observed": 0.0289234065345474
+        },
+        {
+          "n": 1867,
+          "predicted": 0.03771616307658268,
+          "observed": 0.037493304767005894
+        },
+        {
+          "n": 1867,
+          "predicted": 0.05360748606990213,
+          "observed": 0.05891805034815212
+        },
+        {
+          "n": 1867,
+          "predicted": 0.1046117250014255,
+          "observed": 0.09105516871987145
+        }
+      ],
+      "test_four_input_model": {
+        "roc_auc": 0.7780690254321947,
+        "brier_score": 0.02485681557519158,
+        "log_loss": 0.10819125136784473,
+        "mean_prediction": 0.027323324977079195,
+        "observed_rate": 0.026242502142245074
+      }
+    },
+    "heart_disease": {
+      "weights": {
+        "intercept": -3.5638552987411343,
+        "age_centered_scaled": 0.7434615577028233,
+        "age_centered_scaled_squared": -0.5566160846319136,
+        "female": -0.23729526769726864,
+        "primary": 0.2703213286500638,
+        "secondary": 0.2887518117807103,
+        "higher": 0.279110922221212,
+        "current_tobacco": -0.24191720519543608,
+        "walk_difficulty": 0.1743820227214874,
+        "alcohol_use": -0.09132490174846894,
+        "worked": -0.3348085456802617,
+        "prior_hypertension": 0.8290545588469215,
+        "prior_diabetes": 0.6211009092672143
+      },
+      "gradient_steps": 12211,
+      "learning_rate": 1.1907889573443695,
+      "training_n": 74726,
+      "training_events": 995,
+      "test_n": 18740,
+      "test_events": 253,
+      "test_model": {
+        "roc_auc": 0.7235819594198337,
+        "brier_score": 0.013172868045720446,
+        "log_loss": 0.06703214629838143,
+        "mean_prediction": 0.013305360749951834,
+        "observed_rate": 0.013500533617929562
+      },
+      "test_base_rate_model": {
+        "roc_auc": 0.5,
+        "brier_score": 0.013318303517030837,
+        "log_loss": 0.07153043736655847,
+        "mean_prediction": 0.013315311939619408,
+        "observed_rate": 0.013500533617929562
+      },
+      "test_calibration_by_risk_tenth": [
+        {
+          "n": 1874,
+          "predicted": 0.0022081520485089587,
+          "observed": 0.0016008537886872999
+        },
+        {
+          "n": 1874,
+          "predicted": 0.003334612359733953,
+          "observed": 0.0048025613660619
+        },
+        {
+          "n": 1874,
+          "predicted": 0.004625165109415481,
+          "observed": 0.0026680896478121665
+        },
+        {
+          "n": 1874,
+          "predicted": 0.006303085895525433,
+          "observed": 0.0064034151547491995
+        },
+        {
+          "n": 1874,
+          "predicted": 0.008505258876905352,
+          "observed": 0.008537886872998933
+        },
+        {
+          "n": 1874,
+          "predicted": 0.011243501996133241,
+          "observed": 0.016008537886873
+        },
+        {
+          "n": 1874,
+          "predicted": 0.014719482506491445,
+          "observed": 0.015474919957310566
+        },
+        {
+          "n": 1874,
+          "predicted": 0.01873697584829009,
+          "observed": 0.016008537886873
+        },
+        {
+          "n": 1874,
+          "predicted": 0.024061217075766306,
+          "observed": 0.019743863393810034
+        },
+        {
+          "n": 1874,
+          "predicted": 0.03931615578274806,
+          "observed": 0.04375667022411953
+        }
+      ],
+      "test_four_input_model": {
+        "roc_auc": 0.7101032003901471,
+        "brier_score": 0.013207052535057013,
+        "log_loss": 0.06766466810083116,
+        "mean_prediction": 0.01326071709630594,
+        "observed_rate": 0.013500533617929562
+      }
+    }
+  }
+}

@@ -10,6 +10,29 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get researchWorkPastYear =>
+      'Any farm, business, wage or salaried work in the past year?';
+
+  @override
+  String get researchAlcoholUse =>
+      'Does the participant drink alcohol, even occasionally?';
+
+  @override
+  String get researchWalkingOneKm => 'Difficulty walking 1 km';
+
+  @override
+  String get researchNoWalkingDifficulty => 'No difficulty';
+
+  @override
+  String get researchWalkingWithDifficulty => 'Can walk with difficulty';
+
+  @override
+  String get researchUnableToWalkOneKm => 'Unable to walk 1 km';
+
+  @override
+  String get researchHeartDisease => 'Heart disease';
+
+  @override
   String get continueLabel => 'Continue';
 
   @override

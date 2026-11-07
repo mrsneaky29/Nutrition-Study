@@ -167,6 +167,15 @@ String translateCollectorCopy(AppLocalizations l, String text) {
       l.interviewQuestions1Of2LeaveSensitiveAnswersBlankIfTheParticipantDeclines,
     "Age (years)" => l.ageYears,
     "Employment/work category" => l.employmentWorkCategory,
+    "Any farm, business, wage or salaried work in the past year?" =>
+      l.researchWorkPastYear,
+    "Does the participant drink alcohol, even occasionally?" =>
+      l.researchAlcoholUse,
+    "Difficulty walking 1 km" => l.researchWalkingOneKm,
+    "No difficulty" => l.researchNoWalkingDifficulty,
+    "Can walk with difficulty" => l.researchWalkingWithDifficulty,
+    "Unable to walk 1 km" => l.researchUnableToWalkOneKm,
+    "Heart disease" => l.researchHeartDisease,
     "Type of tobacco" => l.typeOfTobacco,
     "Alcohol use in the past 30 days" => l.alcoholUseInThePast30Days,
     "In the past 7 days, how often did the participant have:" =>

@@ -98,6 +98,48 @@ abstract class AppLocalizations {
     Locale('te'),
   ];
 
+  /// No description provided for @researchWorkPastYear.
+  ///
+  /// In en, this message translates to:
+  /// **'Any farm, business, wage or salaried work in the past year?'**
+  String get researchWorkPastYear;
+
+  /// No description provided for @researchAlcoholUse.
+  ///
+  /// In en, this message translates to:
+  /// **'Does the participant drink alcohol, even occasionally?'**
+  String get researchAlcoholUse;
+
+  /// No description provided for @researchWalkingOneKm.
+  ///
+  /// In en, this message translates to:
+  /// **'Difficulty walking 1 km'**
+  String get researchWalkingOneKm;
+
+  /// No description provided for @researchNoWalkingDifficulty.
+  ///
+  /// In en, this message translates to:
+  /// **'No difficulty'**
+  String get researchNoWalkingDifficulty;
+
+  /// No description provided for @researchWalkingWithDifficulty.
+  ///
+  /// In en, this message translates to:
+  /// **'Can walk with difficulty'**
+  String get researchWalkingWithDifficulty;
+
+  /// No description provided for @researchUnableToWalkOneKm.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to walk 1 km'**
+  String get researchUnableToWalkOneKm;
+
+  /// No description provided for @researchHeartDisease.
+  ///
+  /// In en, this message translates to:
+  /// **'Heart disease'**
+  String get researchHeartDisease;
+
   /// Collector interface: Continue
   ///
   /// In en, this message translates to:

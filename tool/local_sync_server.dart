@@ -12,6 +12,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'ihds_research_risk.dart';
+
 const _defaultHost = '0.0.0.0';
 const _publicDefaultHost = '127.0.0.1';
 const _defaultPort = 8787;
@@ -521,6 +523,16 @@ Future<void> handleRequest(
     if (request.method == 'GET' && isRecordsRoute) {
       _requireAdminAccess(isAdmin);
       await _writeJson(request.response, HttpStatus.ok, store.records());
+      return;
+    }
+    if (request.method == 'GET' &&
+        segments.length == 3 &&
+        segments.first == 'records' &&
+        segments.last == 'research-risk') {
+      _requireAdminAccess(isAdmin);
+      final result = store.researchRisk(segments[1]);
+      request.response.headers.set('Cache-Control', 'no-store');
+      await _writeJson(request.response, HttpStatus.ok, result);
       return;
     }
     if (request.method == 'POST' && isRecordsRoute) {
@@ -1195,6 +1207,14 @@ class LocalRecordStore {
         ),
       );
     return values;
+  }
+
+  Map<String, Object?> researchRisk(String recordId) {
+    final record = _records[recordId];
+    if (record == null) {
+      throw const ApiException(HttpStatus.notFound, 'Record not found.');
+    }
+    return scoreIhdsResearchRisk(record['questionnaire']);
   }
 
   List<Map<String, dynamic>> conflicts() {
@@ -2046,10 +2066,10 @@ void _validateQuestionnaire(Object? value) {
   }
   final questionnaire = Map<String, dynamic>.from(value);
   final version = questionnaire['schemaVersion'] ?? 1;
-  if (version is! int || (version != 1 && version != 2 && version != 3)) {
+  if (version is! int || version < 1 || version > 4) {
     throw ApiException(
       HttpStatus.badRequest,
-      'questionnaire.schemaVersion must be 1, 2 or 3.',
+      'questionnaire.schemaVersion must be between 1 and 4.',
     );
   }
   const requiredText = {
@@ -2073,7 +2093,7 @@ void _validateQuestionnaire(Object? value) {
     'bmi',
     'averageSystolic',
     'averageDiastolic',
-    if (version == 3) 'waistHipRatio',
+    if (version >= 3) 'waistHipRatio',
   };
   const measurementFields = {
     'heightCm',
@@ -2086,7 +2106,7 @@ void _validateQuestionnaire(Object? value) {
   };
   final currentMeasurementFields = {
     ...measurementFields,
-    if (version == 3) 'hipCm',
+    if (version >= 3) 'hipCm',
   };
   const missingReasonFields = {
     'heightMissingReason',
@@ -2097,7 +2117,13 @@ void _validateQuestionnaire(Object? value) {
   };
   final currentMissingReasonFields = {
     ...missingReasonFields,
-    if (version == 3) 'hipMissingReason',
+    if (version >= 3) 'hipMissingReason',
+  };
+  const researchChoices = {
+    'walkingOneKm': {'no_difficulty', 'with_difficulty', 'unable', 'dont_know'},
+    'drinksAlcohol': {'yes', 'no', 'dont_know'},
+    'workedPastYear': {'yes', 'no', 'dont_know'},
+    'heartDiseaseDiagnosis': {'yes', 'no', 'dont_know'},
   };
   final allowed = {
     ...requiredText,
@@ -2115,6 +2141,7 @@ void _validateQuestionnaire(Object? value) {
     'diabetesDiagnosis',
     'highCholesterolDiagnosis',
     'cardiovascularDiagnosis',
+    if (version >= 4) ...researchChoices.keys,
   };
   final requiredFields = {
     ...requiredText,
@@ -2186,7 +2213,7 @@ void _validateQuestionnaire(Object? value) {
   validateOptionalMeasurement('heightCm', 'heightMissingReason');
   validateOptionalMeasurement('weightKg', 'weightMissingReason');
   validateOptionalMeasurement('waistCm', 'waistMissingReason');
-  if (version == 3) {
+  if (version >= 3) {
     validateOptionalMeasurement('hipCm', 'hipMissingReason');
   }
 
@@ -2244,7 +2271,7 @@ void _validateQuestionnaire(Object? value) {
   final height = questionnaire['heightCm'] as num?;
   final weight = questionnaire['weightKg'] as num?;
   final waist = questionnaire['waistCm'] as num?;
-  final hip = version == 3 ? questionnaire['hipCm'] as num? : null;
+  final hip = version >= 3 ? questionnaire['hipCm'] as num? : null;
   final waistHipRatio = waist == null || hip == null ? null : waist / hip;
   final bmi = height == null || weight == null
       ? null
@@ -2266,7 +2293,7 @@ void _validateQuestionnaire(Object? value) {
 
   if (differs(questionnaire['weeklyActiveMinutes'], weekly) ||
       differs(questionnaire['bmi'], bmi) ||
-      (version == 3 &&
+      (version >= 3 &&
           differs(questionnaire['waistHipRatio'], waistHipRatio)) ||
       differs(questionnaire['averageSystolic'], averageSystolic) ||
       differs(questionnaire['averageDiastolic'], averageDiastolic)) {
@@ -2289,6 +2316,17 @@ void _validateQuestionnaire(Object? value) {
         HttpStatus.badRequest,
         'questionnaire.$field must be text or null.',
       );
+    }
+  }
+  if (version >= 4) {
+    for (final entry in researchChoices.entries) {
+      final answer = questionnaire[entry.key];
+      if (answer != null && !entry.value.contains(answer)) {
+        throw ApiException(
+          HttpStatus.badRequest,
+          'questionnaire.${entry.key} has an unsupported answer.',
+        );
+      }
     }
   }
 }

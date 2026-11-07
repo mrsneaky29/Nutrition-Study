@@ -1,0 +1,28 @@
+# Vivayu 1.0.3+11
+
+The collector questionnaire adds four optional items in English and Telugu.
+
+- Difficulty walking one kilometre
+- Alcohol use, including occasional use
+- Farm, business, wage or salaried work during the past year
+- A previous diagnosis of heart disease
+
+The VPS backend accepts questionnaire versions 1–4. Administrators can request
+an on-demand research estimate with `GET /records/<record-id>/research-risk`.
+The scorer runs in Dart using fixed coefficients from three logistic regression
+models trained on the IHDS 2004–05 and 2011–12 panel. It estimates newly reported
+hypertension, diabetes and heart disease. For each outcome it returns an
+estimate, a prior-diagnosis status, or an insufficient-information status.
+
+The expanded model's AUC on held-out IHDS households was 0.755 for hypertension,
+0.791 for diabetes and 0.724 for heart disease. This is internal validation in
+the historical cohort. The API is for research and requires administrator access.
+The release includes the training code and aggregate results.
+
+The local regression suite passed 308 tests, with 14 configuration-dependent
+skips. The test suite covers legacy questionnaires, access control and agreement
+with Python on a synthetic profile.
+
+Activate the backend before distributing the collector APK. Install the APK over
+the previous official Vivayu build to preserve the phone's saved records and
+settings. The package remains `org.nutritionstudy.project2`.

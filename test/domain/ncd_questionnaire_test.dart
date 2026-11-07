@@ -48,7 +48,10 @@ void main() {
         ..remove('schemaVersion');
       expect(NcdQuestionnaire.fromMap(legacy), isNotNull);
       expect(
-        NcdQuestionnaire.fromMap({...original, 'schemaVersion': 4}),
+        NcdQuestionnaire.fromMap({
+          ...original,
+          'schemaVersion': NcdQuestionnaire.schemaVersion + 1,
+        }),
         isNull,
       );
     },
@@ -56,7 +59,7 @@ void main() {
 
   test('v3 records hip circumference and calculates waist-to-hip ratio', () {
     const current = NcdQuestionnaire(
-      version: NcdQuestionnaire.schemaVersion,
+      version: 3,
       studySite: 'community_clinic',
       age: 34,
       sex: 'female',
@@ -80,6 +83,18 @@ void main() {
     );
     expect(current.waistHipRatio, 0.8);
     expect(current.toMap()['schemaVersion'], 3);
+    final expanded = NcdQuestionnaire.fromMap({
+      ...current.toMap(),
+      'schemaVersion': 4,
+      'walkingOneKm': 'with_difficulty',
+      'drinksAlcohol': 'yes',
+      'workedPastYear': 'no',
+      'heartDiseaseDiagnosis': 'dont_know',
+    });
+    expect(expanded?.toCsvRow()['ncd_walking_one_km'], 'with_difficulty');
+    expect(expanded?.toMap()['drinksAlcohol'], 'yes');
+    expect(expanded?.toMap()['workedPastYear'], 'no');
+    expect(expanded?.toMap()['heartDiseaseDiagnosis'], 'dont_know');
     expect(current.toMap()['waistHipRatio'], 0.8);
     expect(current.toCsvRow()['ncd_hip_cm'], '100.0');
     expect(current.toCsvRow()['ncd_waist_hip_ratio'], '0.8');

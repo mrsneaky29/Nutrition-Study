@@ -11,14 +11,24 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: NcdQuestionnaireScreen(
-          initialDraft: _validMeasurementDraft(),
+          initialDraft: {
+            ..._validMeasurementDraft(),
+            'walkingOneKm': 'with_difficulty',
+            'drinksAlcohol': 'yes',
+            'workedPastYear': 'no',
+            'heartDiseaseDiagnosis': 'dont_know',
+          },
           onComplete: (value) => completed = value,
         ),
       ),
     );
     expect(find.text('Hip circumference (cm)'), findsWidgets);
     await _tapReviewQuestionnaire(tester);
-    expect(completed?.version, 3);
+    expect(completed?.version, NcdQuestionnaire.schemaVersion);
+    expect(completed?.walkingOneKm, 'with_difficulty');
+    expect(completed?.drinksAlcohol, 'yes');
+    expect(completed?.workedPastYear, 'no');
+    expect(completed?.heartDiseaseDiagnosis, 'dont_know');
     expect(completed?.hipCm, 100);
     expect(completed?.waistHipRatio, 0.8);
   });
