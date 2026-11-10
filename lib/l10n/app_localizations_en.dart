@@ -10,6 +10,20 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get volunteer => 'Volunteer';
+
+  @override
+  String get continueAsVolunteer => 'Continue as volunteer';
+
+  @override
+  String get volunteerSignInHint =>
+      'No QR code or personal sign-in details needed. Internet is required for first sign-in.';
+
+  @override
+  String get volunteerSignInFailed =>
+      'Could not sign in as volunteer. Check the internet and try again.';
+
+  @override
   String get researchWorkPastYear =>
       'Any farm, business, wage or salaried work in the past year?';
 

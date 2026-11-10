@@ -8,11 +8,13 @@ class CollectorAccount {
     required this.status,
     required this.createdAt,
     this.displayName,
+    this.isVolunteer = false,
     this.deviceBinding,
   }) : assert(code != '');
 
   final String code;
   final String? displayName;
+  final bool isVolunteer;
   final CollectorAccountStatus status;
   final DateTime createdAt;
   final CollectorDeviceBinding? deviceBinding;
@@ -28,6 +30,7 @@ class CollectorAccount {
   }) => CollectorAccount(
     code: code,
     displayName: displayName ?? this.displayName,
+    isVolunteer: isVolunteer,
     status: status ?? this.status,
     createdAt: createdAt,
     deviceBinding: clearDeviceBinding
@@ -40,10 +43,8 @@ class CollectorAccount {
 ///
 /// Fingerprints and issued credentials are intentionally not available here.
 class CollectorDeviceBinding {
-  const CollectorDeviceBinding({
-    required this.label,
-    required this.boundAt,
-  }) : assert(label != '');
+  const CollectorDeviceBinding({required this.label, required this.boundAt})
+    : assert(label != '');
 
   final String label;
   final DateTime boundAt;

@@ -5,6 +5,21 @@ import 'app_localizations.dart';
 String translateCollectorCopy(AppLocalizations l, String text) {
   if (l.localeName == 'en') return text;
   final exact = switch (text) {
+    "Volunteer" => l.volunteer,
+    "Continue as volunteer" => l.continueAsVolunteer,
+    "No QR code or personal sign-in details needed. Internet is required for first sign-in." =>
+      l.volunteerSignInHint,
+    "Could not sign in as volunteer. Check the internet and try again." =>
+      l.volunteerSignInFailed,
+    "Any farm, business, wage or salaried work in the past year?" =>
+      l.researchWorkPastYear,
+    "Does the participant drink alcohol, even occasionally?" =>
+      l.researchAlcoholUse,
+    "Difficulty walking 1 km" => l.researchWalkingOneKm,
+    "No difficulty" => l.researchNoWalkingDifficulty,
+    "Can walk with difficulty" => l.researchWalkingWithDifficulty,
+    "Unable to walk 1 km" => l.researchUnableToWalkOneKm,
+    "Heart disease" => l.researchHeartDisease,
     "Continue" => l.continueLabel,
     "Sign out" => l.signOut,
     "Study ID" => l.studyId,
@@ -167,15 +182,6 @@ String translateCollectorCopy(AppLocalizations l, String text) {
       l.interviewQuestions1Of2LeaveSensitiveAnswersBlankIfTheParticipantDeclines,
     "Age (years)" => l.ageYears,
     "Employment/work category" => l.employmentWorkCategory,
-    "Any farm, business, wage or salaried work in the past year?" =>
-      l.researchWorkPastYear,
-    "Does the participant drink alcohol, even occasionally?" =>
-      l.researchAlcoholUse,
-    "Difficulty walking 1 km" => l.researchWalkingOneKm,
-    "No difficulty" => l.researchNoWalkingDifficulty,
-    "Can walk with difficulty" => l.researchWalkingWithDifficulty,
-    "Unable to walk 1 km" => l.researchUnableToWalkOneKm,
-    "Heart disease" => l.researchHeartDisease,
     "Type of tobacco" => l.typeOfTobacco,
     "Alcohol use in the past 30 days" => l.alcoholUseInThePast30Days,
     "In the past 7 days, how often did the participant have:" =>

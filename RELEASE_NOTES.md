@@ -1,4 +1,21 @@
-# Vivayu 1.0.3+11
+# Vivayu 1.0.4+12
+
+## Volunteer access and public Android download
+
+- Added **Continue as volunteer** beside QR sign-in, without asking for any
+  sign-in details. First use needs internet; each installation retains its own
+  securely generated credential and can resume after logout or restart.
+- Volunteer submissions are labeled **Volunteer** in the app and admin console,
+  including search and archive/restore. Raw IDs remain available for audit/export.
+- Volunteers are restricted to their own participant lookup and submissions;
+  admin endpoints and other collectors' records stay protected. Anonymous
+  registration/upload limits and persistent disable support are included.
+- English and Telugu copy added. Existing QR sign-in, questionnaire schema 4,
+  calculations, research estimates and admin measurement corrections remain.
+- The homepage Vivayu card links to a direct signed APK download on the existing
+  DigitalOcean host. No Play Store or Google Drive login is needed.
+
+## Retained from 1.0.3+11
 
 ## Admin measurement corrections
 

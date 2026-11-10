@@ -970,7 +970,7 @@ class _RecordsPanel extends StatelessWidget {
                             ),
                           DataCell(Text(record.participant.indianPhone)),
                           DataCell(Text('Visit ${record.visitNumber}')),
-                          DataCell(Text(record.collectorId)),
+                          DataCell(Text(record.collectorLabel)),
                           DataCell(_StatusPill(record: record)),
                           DataCell(_ReviewPill(record: record)),
                           DataCell(Text(_relativeTime(record.updatedAt))),
@@ -1539,6 +1539,7 @@ class _RecordEditSheetState extends State<_RecordEditSheet> {
           participant: participant,
           visitNumber: visitNumber,
           collectorId: widget.record.collectorId,
+          collectorDisplayName: widget.record.collectorDisplayName,
           createdAt: widget.record.createdAt,
           updatedAt: widget.record.updatedAt,
           status: _status,
@@ -1719,7 +1720,7 @@ class _RecordDetailsState extends State<_RecordDetails> {
                     label: 'Phone',
                     value: record.participant.indianPhone,
                   ),
-                  _DetailRow(label: 'Collector', value: record.collectorId),
+                  _DetailRow(label: 'Collector', value: record.collectorLabel),
                   _DetailRow(
                     label: 'Visit number',
                     value: 'Visit ${record.visitNumber}',
@@ -2109,6 +2110,7 @@ List<VisitRecord> _recordsForView(
       record.participant.name,
       record.participant.indianPhone,
       record.collectorId,
+      record.collectorLabel,
     ].join(' ').toLowerCase();
     return haystack.contains(normalizedQuery) && filter.matches(record);
   }).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));

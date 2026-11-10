@@ -98,6 +98,30 @@ abstract class AppLocalizations {
     Locale('te'),
   ];
 
+  /// No description provided for @volunteer.
+  ///
+  /// In en, this message translates to:
+  /// **'Volunteer'**
+  String get volunteer;
+
+  /// No description provided for @continueAsVolunteer.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue as volunteer'**
+  String get continueAsVolunteer;
+
+  /// No description provided for @volunteerSignInHint.
+  ///
+  /// In en, this message translates to:
+  /// **'No QR code or personal sign-in details needed. Internet is required for first sign-in.'**
+  String get volunteerSignInHint;
+
+  /// No description provided for @volunteerSignInFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not sign in as volunteer. Check the internet and try again.'**
+  String get volunteerSignInFailed;
+
   /// No description provided for @researchWorkPastYear.
   ///
   /// In en, this message translates to:

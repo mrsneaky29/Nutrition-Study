@@ -58,6 +58,7 @@ class LocalApiVisitRepository
     return CollectorAccount(
       code: value['code'] as String,
       displayName: value['displayName'] as String?,
+      isVolunteer: value['isVolunteer'] == true,
       status: value['status'] == 'active'
           ? CollectorAccountStatus.active
           : CollectorAccountStatus.disabled,
@@ -394,6 +395,9 @@ class LocalApiVisitRepository
       participant: participant,
       visitNumber: _integer(json, 'visitNumber'),
       collectorId: _string(json, 'collectorId'),
+      collectorDisplayName: json['collectorDisplayName'] == 'Volunteer'
+          ? 'Volunteer'
+          : null,
       createdAt: _date(json['createdAt']),
       updatedAt: _date(json['updatedAt']),
       status: _enumByName(VisitStatus.values, _string(json, 'status')),

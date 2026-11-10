@@ -106,6 +106,7 @@ class VisitRecord {
     required this.participant,
     required this.visitNumber,
     required this.collectorId,
+    this.collectorDisplayName,
     required this.createdAt,
     required this.updatedAt,
     required this.status,
@@ -128,6 +129,8 @@ class VisitRecord {
   final ParticipantProfile participant;
   final int visitNumber;
   final String collectorId;
+  final String? collectorDisplayName;
+  String get collectorLabel => collectorDisplayName ?? collectorId;
   final DateTime createdAt;
   final DateTime updatedAt;
   final VisitStatus status;
@@ -180,6 +183,7 @@ class VisitRecord {
       participant: participant ?? this.participant,
       visitNumber: visitNumber ?? this.visitNumber,
       collectorId: collectorId,
+      collectorDisplayName: collectorDisplayName,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       status: status ?? this.status,

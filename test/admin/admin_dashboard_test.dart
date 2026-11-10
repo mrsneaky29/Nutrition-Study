@@ -15,6 +15,53 @@ import 'package:project2/domain/visit_record.dart';
 void main() {
   const admin = AuthenticatedUser(id: 'admin.test', role: UserRole.admin);
 
+  testWidgets(
+    'volunteer records display and search by Volunteer without changing identity',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final original = (await createAdminDemoRepository().listVisibleTo(admin))
+          .first;
+      final repository = InMemoryVisitRepository()
+        ..seed([
+          VisitRecord(
+            id: original.id,
+            participant: original.participant,
+            visitNumber: original.visitNumber,
+            collectorId: 'C999',
+            collectorDisplayName: 'Volunteer',
+            createdAt: original.createdAt,
+            updatedAt: original.updatedAt,
+            status: original.status,
+            syncState: original.syncState,
+            reviewState: original.reviewState,
+            revision: original.revision,
+            confirmation: original.confirmation,
+          ),
+        ]);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AdminDashboard(repository: repository, admin: admin),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Volunteer'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'volunteer');
+      await tester.pumpAndSettle();
+      expect(find.text('No matching records'), findsNothing);
+      await tester.tap(find.text(original.participant.name).first);
+      await tester.pumpAndSettle();
+      expect(find.text('Volunteer'), findsWidgets);
+      expect(
+        (await repository.listVisibleTo(admin)).single.collectorId,
+        'C999',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('admin dashboard searches records and opens its guarded editor', (
     tester,
   ) async {
@@ -155,7 +202,8 @@ void main() {
 
       Future<void> enterMeasurement(String label, String value) async {
         final field = find.byWidgetPredicate(
-          (widget) => widget is TextField && widget.decoration?.labelText == label,
+          (widget) =>
+              widget is TextField && widget.decoration?.labelText == label,
         );
         await tester.ensureVisible(field);
         await tester.enterText(field, value);
@@ -168,7 +216,10 @@ void main() {
       await enterMeasurement('BP1 systolic (mmHg)', '80');
       await tester.tap(find.text('Save changes'));
       await tester.pumpAndSettle();
-      expect(find.text('Systolic must be greater than diastolic.'), findsOneWidget);
+      expect(
+        find.text('Systolic must be greater than diastolic.'),
+        findsOneWidget,
+      );
       await enterMeasurement('BP1 systolic (mmHg)', '130');
       await enterMeasurement('BP1 diastolic (mmHg)', '84');
       await enterMeasurement('BP2 systolic (mmHg)', '126');
@@ -344,8 +395,12 @@ void main() {
         return null;
       },
     );
-    addTearDown(() => tester.binding.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, null));
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
     final repository = createAdminDemoRepository();
     final original = (await repository.getById('visit-101', admin))!;
     final current = NcdQuestionnaire.fromMap({

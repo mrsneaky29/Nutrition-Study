@@ -456,7 +456,9 @@ class _CollectorCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'Collector ${_collectorNumber(account.code)}',
+                    account.isVolunteer
+                        ? 'Volunteer'
+                        : 'Collector ${_collectorNumber(account.code)}',
                     style: const TextStyle(
                       fontSize: 21,
                       fontWeight: FontWeight.w800,
@@ -466,9 +468,9 @@ class _CollectorCard extends StatelessWidget {
                 _StatusChip(status: account.status),
               ],
             ),
-            if (account.displayName case final name?) ...[
+            if (!account.isVolunteer && account.displayName != null) ...[
               const SizedBox(height: 4),
-              Text(name),
+              Text(account.displayName!),
             ],
             const SizedBox(height: 14),
             Text(

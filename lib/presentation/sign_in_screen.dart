@@ -13,6 +13,7 @@ import '../collector_auth/mobile_collector_qr_scanner.dart';
 class SignInScreen extends StatefulWidget {
   const SignInScreen({
     this.onSignIn,
+    this.onVolunteerSignIn,
     this.showLocalSetup = false,
     this.requireHttps = false,
     this.initialCollectorNumber = '',
@@ -23,6 +24,7 @@ class SignInScreen extends StatefulWidget {
   });
 
   final ValueChanged<CollectorAccessInput>? onSignIn;
+  final VoidCallback? onVolunteerSignIn;
   final bool showLocalSetup;
   final bool requireHttps;
   final String initialCollectorNumber;
@@ -39,11 +41,13 @@ class CollectorAccessInput {
     required this.collectorCode,
     this.serverUrl = '',
     this.accessKey = '',
+    this.isVolunteer = false,
   });
 
   final String collectorCode;
   final String serverUrl;
   final String accessKey;
+  final bool isVolunteer;
 }
 
 class _SignInScreenState extends State<SignInScreen> {
@@ -290,6 +294,22 @@ class _SignInScreenState extends State<SignInScreen> {
                           _isScanning ? 'Scanning…' : 'Scan sign-in QR',
                         ),
                       ),
+                      if (widget.onVolunteerSignIn != null) ...[
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          key: const Key('volunteer-sign-in'),
+                          onPressed: _isScanning
+                              ? null
+                              : widget.onVolunteerSignIn,
+                          icon: const Icon(Icons.volunteer_activism_outlined),
+                          label: const CollectorText('Continue as volunteer'),
+                        ),
+                        const SizedBox(height: 8),
+                        const CollectorText(
+                          'No QR code or personal sign-in details needed. Internet is required for first sign-in.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                       if (_scanMessage != null) ...[
                         const SizedBox(height: 12),
                         CollectorText(

@@ -6,6 +6,12 @@ For current operating instructions, start with [README.md](README.md).
 
 ## Important version distinctions
 
+- **Vivayu 1.0.4+12** adds no-details volunteer login with per-installation
+  credentials, restricted participant access, Volunteer labels in the app/admin,
+  English/Telugu copy and a direct APK link on the Achanta Labs homepage.
+  Existing questionnaire schema 4, scoring and measurement editing are retained.
+  Deploy backend/admin first; legacy rollback must disable volunteer credentials.
+
 - **Vivayu +9** adds complete collector English/తెలుగు display switching,
   persisted separately from records and credentials, with an offline Telugu
   font and a toggle above every route. Android metadata is `1.0.2+10`, preserving

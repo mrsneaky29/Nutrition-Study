@@ -5,8 +5,34 @@ console. Existing package identifiers, deployment domains and historical release
 names are preserved for compatibility.
 
 The visible app and console name is `Vivayu`. The current collector release is
-`1.0.3+11`. See the [release notes](RELEASE_NOTES.md) for the schema 4
+`1.0.4+12`. See the [release notes](RELEASE_NOTES.md) for the schema 4
 questionnaire and the IHDS backend scorer.
+
+## Volunteer sign-in and direct download
+
+People without a collector QR can choose **Continue as volunteer**. No number,
+name, server address, access key or QR is requested. First sign-in needs internet;
+the app automatically creates and securely retains a separate installation key.
+Returning volunteers keep their identity, saved visits and ordinary offline sync.
+They appear as **Volunteer** in the app and admin record lists/details/search.
+Internal collector IDs remain unchanged for ownership, audit and CSV exports.
+
+Volunteer access is unverified public submission, not trusted staff access.
+Volunteers cannot list admin records, discover other collectors' participants,
+attach visits to another collector's Study ID, edit/archive records through the
+admin API, or create/manage collectors. Account disable remains effective.
+Registration is limited to 20 requests/minute/client IP and uploads to 60/minute
+per volunteer; new registration pauses at 10,000 volunteer accounts. Existing
+identities can resume. Anonymous access cannot establish a person's real identity
+or prevent all spam; review public submissions appropriately.
+
+The public APK download is `https://achantalabs.com/downloads/Vivayu.apk`, linked
+from Vivayu's homepage card and served directly by the existing DigitalOcean
+host. It contains no collector or administrator credential. Install over the
+official signed app without uninstalling or clearing data. Deploy the new backend
+and admin before publishing the APK. **Legacy rollback must disable volunteer
+keys before starting an older backend**, which does not understand the restricted
+role; use `tool/vps/deploy-volunteer-release.py` for rollback-safe activation.
 
 ## Vivayu +9 — English / తెలుగు
 

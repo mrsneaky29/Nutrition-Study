@@ -10,6 +10,20 @@ class AppLocalizationsTe extends AppLocalizations {
   AppLocalizationsTe([String locale = 'te']) : super(locale);
 
   @override
+  String get volunteer => 'వాలంటీర్';
+
+  @override
+  String get continueAsVolunteer => 'వాలంటీర్‌గా కొనసాగండి';
+
+  @override
+  String get volunteerSignInHint =>
+      'QR కోడ్ లేదా వ్యక్తిగత సైన్ ఇన్ వివరాలు అవసరం లేదు. మొదటిసారి సైన్ ఇన్ చేయడానికి ఇంటర్నెట్ అవసరం.';
+
+  @override
+  String get volunteerSignInFailed =>
+      'వాలంటీర్‌గా సైన్ ఇన్ కాలేదు. ఇంటర్నెట్‌ను తనిఖీ చేసి మళ్లీ ప్రయత్నించండి.';
+
+  @override
   String get researchWorkPastYear =>
       'గత సంవత్సరంలో వ్యవసాయం, వ్యాపారం, కూలి లేదా జీతం వచ్చే పని ఏదైనా చేశారా?';
 

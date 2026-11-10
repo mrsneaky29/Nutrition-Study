@@ -375,6 +375,33 @@ Future<void> handleRequest(
 
     final suppliedKey = request.headers.value('x-local-sync-key');
     store.seedCollectorAccounts(accessKeys);
+    // The only anonymous operation creates/resumes a restricted volunteer.
+    // Its installation key is generated and retained by the app, never typed.
+    if (request.method == 'POST' && request.uri.path == '/volunteer/session') {
+      request.response.headers.set('Cache-Control', 'no-store');
+      if (!_volunteerLimiter.allow(_requestClientKey(request))) {
+        throw const ApiException(
+          429,
+          'Too many sign-in attempts. Try again later.',
+        );
+      }
+      final body = await _readJsonObject(request);
+      final installationKey = body['installationKey'];
+      if (body.length != 1 ||
+          installationKey is! String ||
+          !RegExp(r'^[a-f0-9]{64}$').hasMatch(installationKey) ||
+          accessKeys.isAdmin(installationKey)) {
+        throw const ApiException(400, 'Invalid volunteer sign-in request.');
+      }
+      final code = await store.openVolunteerAccount(installationKey);
+      final token = await store.openCollectorSession(code);
+      await _writeJson(request.response, 200, {
+        'collectorId': code,
+        'sessionToken': token,
+        'displayName': 'Volunteer',
+      });
+      return;
+    }
     final collectorIdentity = store.collectorIdentityForKey(suppliedKey);
     final isCollector = collectorIdentity != null;
     final isAdmin = accessKeys.isAdmin(suppliedKey);
@@ -394,6 +421,7 @@ Future<void> handleRequest(
     if (accessKeys.publicMode) {
       _publicAuthLimiter.clear(_requestClientKey(request));
     }
+    final isVolunteer = store.isVolunteer(collectorIdentity);
 
     final segments = request.uri.pathSegments;
     if (segments.isNotEmpty && segments.first == 'collectors') {
@@ -489,7 +517,9 @@ Future<void> handleRequest(
     if (isHealthRoute) {
       await _writeJson(request.response, HttpStatus.ok, {
         'status': store.recoveredFromBackup ? 'degraded' : 'ok',
-        'records': store.length,
+        'records': isVolunteer
+            ? store.collectorRecordCount(collectorIdentity!)
+            : store.length,
         'recoveredFromBackup': store.recoveredFromBackup,
       });
       return;
@@ -511,7 +541,10 @@ Future<void> handleRequest(
           'phone query parameter is required.',
         );
       }
-      final result = store.lookupParticipant(phone);
+      final result = store.lookupParticipant(
+        phone,
+        collectorId: isVolunteer ? collectorIdentity : null,
+      );
       await _writeJson(request.response, HttpStatus.ok, result);
       return;
     }
@@ -547,6 +580,12 @@ Future<void> handleRequest(
           'Collector access required.',
         );
       }
+      if (isVolunteer && !_volunteerWriteLimiter.allow(collectorIdentity)) {
+        throw const ApiException(
+          429,
+          'Too many uploads. Saved visits can retry later.',
+        );
+      }
       final payload = await _readJsonObject(request);
       final authenticatedCollectorId = collectorIdentity;
       final recordCollectorId = payload['collectorId'];
@@ -575,7 +614,11 @@ Future<void> handleRequest(
         segments[1],
         await _readJsonObject(request),
       );
-      await _writeJson(request.response, HttpStatus.ok, record);
+      await _writeJson(
+        request.response,
+        HttpStatus.ok,
+        store.adminRecord(record),
+      );
       return;
     }
     if (request.method == 'POST' &&
@@ -597,7 +640,11 @@ Future<void> handleRequest(
         archived: archived,
         actor: actor.trim(),
       );
-      await _writeJson(request.response, HttpStatus.ok, record);
+      await _writeJson(
+        request.response,
+        HttpStatus.ok,
+        store.adminRecord(record),
+      );
       return;
     }
     if (segments.isNotEmpty && segments.first == 'conflicts') {
@@ -723,11 +770,14 @@ String _requestClientKey(HttpRequest request) => resolveClientKey(
 );
 
 final _publicAuthLimiter = _PublicAuthLimiter();
+final _volunteerLimiter = _PublicAuthLimiter();
+final _volunteerWriteLimiter = _PublicAuthLimiter(maxFailures: 60);
 
 class _PublicAuthLimiter {
+  _PublicAuthLimiter({this.maxFailures = 20});
+  final int maxFailures;
   final Map<String, _AuthFailureWindow> _windows = {};
   static const _window = Duration(minutes: 1);
-  static const _maxFailures = 20;
   static const _maxClients = 1024;
 
   bool allow(String client) {
@@ -740,14 +790,18 @@ class _PublicAuthLimiter {
       _windows[client] = window = _AuthFailureWindow(now);
     }
     window.failures++;
-    return window.failures <= _maxFailures;
+    return window.failures <= maxFailures;
   }
 
   void clear(String client) => _windows.remove(client);
   void reset() => _windows.clear();
 }
 
-void resetAuthLimiterForTesting() => _publicAuthLimiter.reset();
+void resetAuthLimiterForTesting() {
+  _publicAuthLimiter.reset();
+  _volunteerLimiter.reset();
+  _volunteerWriteLimiter.reset();
+}
 
 class _AuthFailureWindow {
   _AuthFailureWindow(this.startedAt);
@@ -915,7 +969,58 @@ class LocalRecordStore {
     'displayName': value['displayName'],
     'status': value['status'],
     'createdAt': value['createdAt'],
+    'isVolunteer': value['isVolunteer'] == true,
   };
+
+  bool isVolunteer(String? code) =>
+      _collectorAccounts[code]?['isVolunteer'] == true;
+
+  int collectorRecordCount(String code) =>
+      _records.values.where((r) => r['collectorId'] == code).length;
+
+  Map<String, dynamic> adminRecord(Map<String, dynamic> record) => {
+    ...record,
+    if (isVolunteer(record['collectorId'] as String?))
+      'collectorDisplayName': 'Volunteer',
+  };
+
+  Future<String> openVolunteerAccount(String key) => _serialize(() async {
+    for (final account in _collectorAccounts.values) {
+      if (account['key'] != key) continue;
+      if (account['isVolunteer'] != true || account['status'] != 'active') {
+        throw const ApiException(403, 'Volunteer access is unavailable.');
+      }
+      return account['code'] as String;
+    }
+    // Bound anonymous registration storage; existing volunteers can still resume.
+    if (_collectorAccounts.values
+            .where((a) => a['isVolunteer'] == true)
+            .length >=
+        10000) {
+      throw const ApiException(
+        503,
+        'Volunteer sign-in is temporarily unavailable.',
+      );
+    }
+    final number =
+        _collectorAccounts.keys
+            .map((c) => int.parse(c.substring(1)))
+            .fold<int>(0, max) +
+        1;
+    final code = 'C${number.toString().padLeft(3, '0')}';
+    await _saveCollectorAccounts({
+      ..._collectorAccounts,
+      code: {
+        'code': code,
+        'key': key,
+        'displayName': 'Volunteer',
+        'isVolunteer': true,
+        'status': 'active',
+        'createdAt': _now(),
+      },
+    });
+    return code;
+  });
 
   List<Map<String, dynamic>> listCollectorAccounts() =>
       (_collectorAccounts.values.map(_safeCollector).toList()
@@ -1038,6 +1143,8 @@ class LocalRecordStore {
             (value['key'] as String).length < 16 ||
             !seenKeys.add(value['key'] as String) ||
             !['active', 'disabled'].contains(value['status']) ||
+            (value.containsKey('isVolunteer') &&
+                value['isVolunteer'] is! bool) ||
             DateTime.tryParse(value['createdAt']?.toString() ?? '') == null) {
           throw StateError('Invalid collector credential store.');
         }
@@ -1205,12 +1312,17 @@ class LocalRecordStore {
   }
 
   List<Map<String, dynamic>> records({bool includeResearchRisk = false}) {
-    final values = _records.values.map(_clone).toList()
-      ..sort(
-        (left, right) => (right['updatedAt'] as String).compareTo(
-          left['updatedAt'] as String,
-        ),
-      );
+    final values =
+        _records.values
+            .map(
+              (r) => includeResearchRisk ? adminRecord(_clone(r)) : _clone(r),
+            )
+            .toList()
+          ..sort(
+            (left, right) => (right['updatedAt'] as String).compareTo(
+              left['updatedAt'] as String,
+            ),
+          );
     if (includeResearchRisk) {
       for (final record in values) {
         record['researchRisk'] = scoreIhdsResearchRisk(record['questionnaire']);
@@ -1391,9 +1503,12 @@ class LocalRecordStore {
     });
   }
 
-  Map<String, dynamic> lookupParticipant(String phone) {
+  Map<String, dynamic> lookupParticipant(String phone, {String? collectorId}) {
     final matchingRecords = _records.values.where((record) {
       if (_isArchived(record)) return false;
+      if (collectorId != null && record['collectorId'] != collectorId) {
+        return false;
+      }
       final p = _participant(record);
       final storedPhone = (p['indianPhone'] as String?) ?? '';
       return _phoneMatches(storedPhone, phone);
@@ -1557,6 +1672,47 @@ class LocalRecordStore {
       // A newer login may have completed while this request body was arriving
       // or while the upload waited behind another store write. Check again at
       // the serialized write point so the accepted upload order is unambiguous.
+      if (isVolunteer(authenticatedCollectorId)) {
+        final participant = incoming['participant'];
+        final studyId = participant is Map ? participant['studyId'] : null;
+        final prefix = studyId is String
+            ? RegExp(r'^C(\d{2,})-\d{6,}$').firstMatch(studyId)
+            : null;
+        if (prefix == null ||
+            BigInt.parse(prefix.group(1)!) !=
+                BigInt.parse(authenticatedCollectorId!.substring(1))) {
+          throw const ApiException(
+            403,
+            'Volunteers can submit only their own study visits.',
+          );
+        }
+        for (final existing in _records.values) {
+          if (existing['collectorId'] == authenticatedCollectorId) continue;
+          if (existing['id'] == incoming['id'] ||
+              (incoming['idempotencyKey'] != null &&
+                  existing['idempotencyKey'] == incoming['idempotencyKey']) ||
+              (studyId != null &&
+                  _participant(existing)['studyId'] == studyId)) {
+            throw const ApiException(
+              403,
+              'Volunteers can submit only their own study visits.',
+            );
+          }
+        }
+        for (final conflict in _conflicts.values) {
+          if ((incoming['idempotencyKey'] != null &&
+                  conflict['idempotencyKey'] == incoming['idempotencyKey']) ||
+              (conflict['rejectedRecord']?['id'] == incoming['id'])) {
+            if (conflict['rejectedRecord']?['collectorId'] !=
+                authenticatedCollectorId) {
+              throw const ApiException(
+                403,
+                'Volunteers can submit only their own study visits.',
+              );
+            }
+          }
+        }
+      }
       if (authenticatedCollectorId != null &&
           _collectorAccounts[authenticatedCollectorId]?['status'] ==
               'disabled') {

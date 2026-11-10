@@ -72,6 +72,34 @@ class HttpLocalRecordSyncClient implements LocalRecordSyncGateway {
   }
 
   /// A new successful login supersedes the previous phone for this collector.
+  Future<({String collectorId, String sessionToken})> startVolunteerSession(
+    String installationKey,
+  ) async {
+    final endpoint = _endpoint('volunteer/session');
+    if (endpoint == null) {
+      throw const FormatException('Invalid configured server.');
+    }
+    final response = await _client
+        .post(
+          endpoint,
+          headers: {'content-type': 'application/json'},
+          body: jsonEncode({'installationKey': installationKey}),
+        )
+        .timeout(timeout);
+    final body = _tryParseJsonMap(response.body);
+    final code = body?['collectorId'];
+    final token = body?['sessionToken'];
+    if (response.statusCode != 200 ||
+        code is! String ||
+        !RegExp(r'^C\d{2,}$').hasMatch(code) ||
+        token is! String ||
+        token.length < 32) {
+      throw StateError('Volunteer sign-in failed.');
+    }
+    sessionToken = token;
+    return (collectorId: code, sessionToken: token);
+  }
+
   Future<String> startSession(String collectorId) async {
     final endpoint = _endpoint('collector/session');
     if (endpoint == null) {

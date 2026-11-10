@@ -341,6 +341,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
   bool _isSignedIn = false;
   bool _isSigningIn = false;
   String _collectorCode = _demoCollectorCode;
+  bool _isVolunteer = false;
   String? _provisionedCollectorCode;
   String _savedServerUrl = '';
   String _savedApiKey = '';
@@ -438,6 +439,51 @@ class _LocalDemoAppState extends State<LocalDemoApp>
     });
   }
 
+  Future<void> _signInAsVolunteer() async {
+    if (_isSigningIn) return;
+    setState(() => _isSigningIn = true);
+    try {
+      final storage = widget.secureStorage ?? const FlutterSecureStorage();
+      var key = await storage.read(key: 'volunteer_installation_key');
+      if (key == null || !RegExp(r'^[a-f0-9]{64}$').hasMatch(key)) {
+        final random = Random.secure();
+        key = List.generate(
+          32,
+          (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+        ).join();
+        // Persist before networking so a retry cannot orphan the identity.
+        await storage.write(key: 'volunteer_installation_key', value: key);
+      }
+      final client = HttpLocalRecordSyncClient(
+        client: widget.localHttpClient,
+        apiBaseUrl: _savedServerUrl,
+        requireHttps: _publicRelease,
+      );
+      final session = await client.startVolunteerSession(key);
+      if (!mounted) return;
+      await _signIn(
+        ui.CollectorAccessInput(
+          collectorCode: session.collectorId,
+          serverUrl: _savedServerUrl,
+          accessKey: key,
+          isVolunteer: true,
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: CollectorText(
+              'Could not sign in as volunteer. Check the internet and try again.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSigningIn = false);
+    }
+  }
+
   Future<void> _signIn(ui.CollectorAccessInput credentials) async {
     final rawCode = credentials.collectorCode.trim().toUpperCase();
     final numberMatch = RegExp(r'^C?(\d+)$').firstMatch(rawCode);
@@ -477,12 +523,17 @@ class _LocalDemoAppState extends State<LocalDemoApp>
         );
         await storage.write(key: 'local_session_token', value: token);
         await storage.write(key: 'local_collector_code', value: formattedCode);
+        await storage.write(
+          key: 'local_volunteer',
+          value: credentials.isVolunteer.toString(),
+        );
         if (!mounted) return;
         _syncGateway = client;
         _savedServerUrl = credentials.serverUrl;
         _savedApiKey = credentials.accessKey;
         setState(() {
           _collectorCode = formattedCode;
+          _isVolunteer = credentials.isVolunteer;
           _isSignedIn = true;
         });
         _startRetryTimer();
@@ -632,6 +683,12 @@ class _LocalDemoAppState extends State<LocalDemoApp>
           ui.SignInScreen(
             key: ValueKey('sign-in-$_collectorCode-$_savedServerUrl'),
             onSignIn: _signIn,
+            onVolunteerSignIn:
+                _genericRelease &&
+                    _publicRelease &&
+                    widget.cloudController == null
+                ? _signInAsVolunteer
+                : null,
             showLocalSetup: _genericRelease && widget.cloudController == null,
             requireHttps: _publicRelease,
             initialCollectorNumber: _genericRelease
@@ -741,6 +798,7 @@ class _LocalDemoAppState extends State<LocalDemoApp>
         _savedApiKey = await storage.read(key: 'local_collector_key') ?? '';
         final token = await storage.read(key: 'local_session_token');
         final code = await storage.read(key: 'local_collector_code');
+        _isVolunteer = await storage.read(key: 'local_volunteer') == 'true';
         if (_savedServerUrl.isNotEmpty &&
             _savedApiKey.isNotEmpty &&
             token != null &&
@@ -827,8 +885,9 @@ class _LocalDemoAppState extends State<LocalDemoApp>
         .reversed
         .toList();
     return ui.CollectorHomeScreen(
-      collectorName:
-          'Collector ${int.tryParse(_collectorCode.replaceAll(RegExp(r'\D'), '')) ?? 1}',
+      collectorName: _isVolunteer
+          ? collectorText(context, 'Volunteer')
+          : 'Collector ${int.tryParse(_collectorCode.replaceAll(RegExp(r'\D'), '')) ?? 1}',
       pendingCount: _records
           .where(
             (record) =>

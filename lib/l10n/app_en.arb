@@ -1,5 +1,9 @@
 {
   "@@locale": "en",
+  "volunteer": "Volunteer",
+  "continueAsVolunteer": "Continue as volunteer",
+  "volunteerSignInHint": "No QR code or personal sign-in details needed. Internet is required for first sign-in.",
+  "volunteerSignInFailed": "Could not sign in as volunteer. Check the internet and try again.",
   "researchWorkPastYear": "Any farm, business, wage or salaried work in the past year?",
   "researchAlcoholUse": "Does the participant drink alcohol, even occasionally?",
   "researchWalkingOneKm": "Difficulty walking 1 km",
