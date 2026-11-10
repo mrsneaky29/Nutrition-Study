@@ -10,6 +10,15 @@ questionnaire and the IHDS backend scorer.
 
 ## Volunteer sign-in and direct download
 
+The Achanta Labs Vivayu card also offers [View health estimates](https://achantalabs.com/vivayu/health-estimates/).
+Visitors can use the unchanged historical IHDS research model without saving a
+survey. Saving defaults to No. Choosing Yes reveals the rest of the existing
+questionnaire and identity confirmation; final submission requires explicit
+storage consent. Website submissions appear as Volunteer in the existing admin
+console. Research limitations and indefinite record/backup retention are shown
+before submission. See [public web survey operations](docs/PUBLIC_WEB_SURVEY.md).
+This website/backend update does not change the collector APK version.
+
 People without a collector QR can choose **Continue as volunteer**. No number,
 name, server address, access key or QR is requested. First sign-in needs internet;
 the app automatically creates and securely retains a separate installation key.

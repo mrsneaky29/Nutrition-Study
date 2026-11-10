@@ -6,6 +6,13 @@ For current operating instructions, start with [README.md](README.md).
 
 ## Important version distinctions
 
+- **10 November 2026 — public website estimates and optional survey:** the
+  Vivayu card opens a research-only model form. Calculation creates no survey
+  records or volunteer accounts. Explicitly consented, complete schema-4 surveys
+  are saved as Volunteer records, with server-calculated measurements and safe
+  duplicate retries. Existing APK version `1.0.4+12` and model coefficients stay
+  unchanged. Backend and website deployed as `vivayu-public-web-20261110`.
+
 - **Vivayu 1.0.4+12** adds no-details volunteer login with per-installation
   credentials, restricted participant access, Volunteer labels in the app/admin,
   English/Telugu copy and a direct APK link on the Achanta Labs homepage.

@@ -13,6 +13,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'ihds_research_risk.dart';
+import 'public_research_inputs.dart';
 
 const _defaultHost = '0.0.0.0';
 const _publicDefaultHost = '127.0.0.1';
@@ -329,12 +330,32 @@ bool _isLoopbackHost(String host) {
   return address?.isLoopback ?? false;
 }
 
+bool _sameJson(Object? a, Object? b) {
+  if (a is Map && b is Map) {
+    return a.length == b.length &&
+        a.keys.every((k) => b.containsKey(k) && _sameJson(a[k], b[k]));
+  }
+  if (a is List && b is List) {
+    return a.length == b.length &&
+        List.generate(a.length, (i) => i).every((i) => _sameJson(a[i], b[i]));
+  }
+  return a == b;
+}
+
 Future<void> handleRequest(
   HttpRequest request,
   LocalRecordStore store,
   AccessKeys accessKeys,
 ) async {
   final origin = request.headers.value('origin');
+  final publicResearchRoute = const {
+    '/public/research-estimate',
+    '/public/survey',
+  }.contains(request.uri.path);
+  final allowedOrigins = {
+    ...accessKeys.allowedOrigins,
+    if (publicResearchRoute) 'https://achantalabs.com',
+  };
   if (accessKeys.publicMode &&
       request.headers.value('x-forwarded-proto')?.toLowerCase() != 'https') {
     await _writeJson(request.response, HttpStatus.forbidden, {
@@ -344,7 +365,7 @@ Future<void> handleRequest(
   }
   if (accessKeys.publicMode &&
       origin != null &&
-      !accessKeys.allowedOrigins.contains(origin)) {
+      !allowedOrigins.contains(origin)) {
     await _writeJson(request.response, HttpStatus.forbidden, {
       'error': 'Origin is not allowed.',
     });
@@ -354,15 +375,58 @@ Future<void> handleRequest(
     request.response,
     publicMode: accessKeys.publicMode,
     origin: origin,
-    allowedOrigins: accessKeys.allowedOrigins,
+    allowedOrigins: allowedOrigins,
   );
   try {
+    if (publicResearchRoute) {
+      request.response.headers.set('Cache-Control', 'no-store');
+    }
     if (request.method == 'OPTIONS') {
       if (accessKeys.publicMode && origin == null) {
         throw const ApiException(HttpStatus.forbidden, 'Origin is required.');
       }
       request.response.statusCode = HttpStatus.noContent;
       await request.response.close();
+      return;
+    }
+
+    if (publicResearchRoute) {
+      if (request.method != 'POST' || request.uri.hasQuery) {
+        throw const ApiException(
+          405,
+          'Use a JSON POST without query parameters.',
+        );
+      }
+      if (request.headers.contentType?.mimeType != 'application/json') {
+        throw const ApiException(415, 'Use application/json.');
+      }
+      final estimate = request.uri.path == '/public/research-estimate';
+      if (!(estimate ? _publicEstimateLimiter : _publicSurveyLimiter).allow(
+        _requestClientKey(request),
+      )) {
+        throw const ApiException(
+          429,
+          'Too many requests. Please try again later.',
+        );
+      }
+      final body = await _readJsonObject(
+        request,
+        maxBytes: estimate ? 4096 : 16384,
+      );
+      if (estimate) {
+        if (body.length != 1 || !body.containsKey('answers')) {
+          throw const ApiException(400, 'Send only the model answers.');
+        }
+        final answers = normalizePublicModelAnswers(body['answers']);
+        // Deliberately no account, session or record-store calls in this path.
+        await _writeJson(request.response, 200, {
+          ...scoreIhdsResearchRisk(answers),
+          'saved': false,
+        });
+      } else {
+        final receipt = await store.savePublicSurvey(body, accessKeys);
+        await _writeJson(request.response, 200, receipt);
+      }
       return;
     }
 
@@ -688,10 +752,14 @@ Future<void> handleRequest(
     await _writeJson(request.response, error.statusCode, error.toJson());
   } on FormatException catch (error) {
     await _writeJson(request.response, HttpStatus.badRequest, {
-      'error': error.message,
+      'error': publicResearchRoute
+          ? 'Check the requested fields and survey answers.'
+          : error.message,
     });
   } catch (error, stackTrace) {
-    stderr.writeln('Request failed: $error\n$stackTrace');
+    if (!publicResearchRoute) {
+      stderr.writeln('Request failed: $error\n$stackTrace');
+    }
     await _writeJson(request.response, HttpStatus.internalServerError, {
       'error': 'Internal server error.',
     });
@@ -772,6 +840,8 @@ String _requestClientKey(HttpRequest request) => resolveClientKey(
 final _publicAuthLimiter = _PublicAuthLimiter();
 final _volunteerLimiter = _PublicAuthLimiter();
 final _volunteerWriteLimiter = _PublicAuthLimiter(maxFailures: 60);
+final _publicEstimateLimiter = _PublicAuthLimiter(maxFailures: 60);
+final _publicSurveyLimiter = _PublicAuthLimiter(maxFailures: 10);
 
 class _PublicAuthLimiter {
   _PublicAuthLimiter({this.maxFailures = 20});
@@ -801,6 +871,8 @@ void resetAuthLimiterForTesting() {
   _publicAuthLimiter.reset();
   _volunteerLimiter.reset();
   _volunteerWriteLimiter.reset();
+  _publicEstimateLimiter.reset();
+  _publicSurveyLimiter.reset();
 }
 
 class _AuthFailureWindow {
@@ -809,9 +881,12 @@ class _AuthFailureWindow {
   int failures = 0;
 }
 
-Future<Map<String, dynamic>> _readJsonObject(HttpRequest request) async {
+Future<Map<String, dynamic>> _readJsonObject(
+  HttpRequest request, {
+  int maxBytes = _maxRequestBytes,
+}) async {
   final contentLength = request.contentLength;
-  if (contentLength > _maxRequestBytes) {
+  if (contentLength > maxBytes) {
     throw ApiException(
       HttpStatus.requestEntityTooLarge,
       'Request body is too large.',
@@ -820,7 +895,7 @@ Future<Map<String, dynamic>> _readJsonObject(HttpRequest request) async {
   final bytes = <int>[];
   await for (final chunk in request) {
     bytes.addAll(chunk);
-    if (bytes.length > _maxRequestBytes) {
+    if (bytes.length > maxBytes) {
       throw ApiException(
         HttpStatus.requestEntityTooLarge,
         'Request body is too large.',
@@ -984,7 +1059,138 @@ class LocalRecordStore {
       'collectorDisplayName': 'Volunteer',
   };
 
-  Future<String> openVolunteerAccount(String key) => _serialize(() async {
+  Future<String> openVolunteerAccount(String key) =>
+      _serialize(() => _openVolunteerAccount(key));
+
+  /// Explicitly consented website submissions use the ordinary survey store.
+  /// Validate everything before creating any persistent volunteer credentials.
+  Future<Map<String, dynamic>> savePublicSurvey(
+    Map<String, dynamic> body,
+    AccessKeys keys,
+  ) => _serialize(() async {
+    const fields = {
+      'consent',
+      'participant',
+      'confirmation',
+      'questionnaire',
+      'installationKey',
+      'submissionId',
+    };
+    if (body.length != fields.length ||
+        !body.keys.toSet().containsAll(fields)) {
+      throw const ApiException(400, 'Complete the survey and confirm saving.');
+    }
+    final consent = body['consent'];
+    final key = body['installationKey'];
+    final nonce = body['submissionId'];
+    if (consent is! Map ||
+        consent.length != 2 ||
+        consent['agreed'] != true ||
+        consent['version'] != publicSurveyConsentVersion ||
+        key is! String ||
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(key) ||
+        keys.isAdmin(key) ||
+        keys.isCollector(key) ||
+        nonce is! String ||
+        !RegExp(r'^[a-f0-9]{32}$').hasMatch(nonce)) {
+      throw const ApiException(
+        400,
+        'Explicit survey-storage consent is required.',
+      );
+    }
+    Map<String, dynamic> identity(Object? value) {
+      if (value is! Map ||
+          value.length != 2 ||
+          value['name'] is! String ||
+          value['indianPhone'] is! String) {
+        throw const ApiException(
+          400,
+          'Enter and confirm your name and Indian mobile number.',
+        );
+      }
+      final name = (value['name'] as String).trim().replaceAll(
+        RegExp(r'\s+'),
+        ' ',
+      );
+      final phone = (value['indianPhone'] as String).trim();
+      if (name.isEmpty ||
+          name.length > 150 ||
+          !RegExp(r'^\+91[6-9]\d{9}$').hasMatch(phone)) {
+        throw const ApiException(
+          400,
+          'Enter a name and a valid +91 Indian mobile number.',
+        );
+      }
+      return {'name': name, 'indianPhone': phone};
+    }
+
+    final participant = identity(body['participant']);
+    final confirmation = identity(body['confirmation']);
+    if (jsonEncode(participant) != jsonEncode(confirmation)) {
+      throw const ApiException(
+        400,
+        'The repeated name and phone number must match.',
+      );
+    }
+    final q = normalizePublicSurveyQuestionnaire(body['questionnaire']);
+    final now = _now();
+    final suffix =
+        (BigInt.parse(nonce, radix: 16) % BigInt.from(9000000000000000) +
+                BigInt.from(1000000000000000))
+            .toString();
+    Map<String, dynamic> record(String code) => _normalizeRecord({
+      'id': 'web-$nonce',
+      'idempotencyKey': 'web-$nonce',
+      'participant': {...participant, 'studyId': '$code-$suffix'},
+      'visitNumber': 1,
+      'collectorId': code,
+      'createdAt': now,
+      'updatedAt': now,
+      'status': 'submitted',
+      'syncState': 'synced',
+      'reviewState': 'pending',
+      'revision': 1,
+      'confirmation': {...confirmation, 'visitNumber': 1, 'confirmedAt': now},
+      'submittedAt': now,
+      'questionnaire': q,
+      'stepTwoPlaceholderNote':
+          'Website self-submission; self-reported answers and measurements. Explicit storage consent: $publicSurveyConsentVersion at $now.',
+    });
+    record('C001'); // Complete schema validation before any write.
+    seedCollectorAccounts(keys);
+    final existing = _records['web-$nonce'];
+    if (existing != null) {
+      final owner = _collectorAccounts[existing['collectorId']];
+      final oldParticipant = _participant(existing)..remove('studyId');
+      // Never overwrite a prior submission, including after an admin edit.
+      if (owner?['key'] != key ||
+          owner?['isVolunteer'] != true ||
+          owner?['status'] != 'active' ||
+          jsonEncode(oldParticipant) != jsonEncode(participant) ||
+          !_sameJson(existing['questionnaire'], q)) {
+        throw const ApiException(
+          409,
+          'This submission was already saved or changed. Contact the administrator.',
+        );
+      }
+      return {
+        'saved': true,
+        'recordId': existing['id'],
+        'studyId': _participant(existing)['studyId'],
+      };
+    }
+    final code = await _openVolunteerAccount(key);
+    final incoming = record(code);
+    await _checkCollectorConflicts(incoming);
+    await _saveRecord(incoming['id'] as String, incoming);
+    return {
+      'saved': true,
+      'recordId': incoming['id'],
+      'studyId': _participant(incoming)['studyId'],
+    };
+  });
+
+  Future<String> _openVolunteerAccount(String key) async {
     for (final account in _collectorAccounts.values) {
       if (account['key'] != key) continue;
       if (account['isVolunteer'] != true || account['status'] != 'active') {
@@ -1020,7 +1226,7 @@ class LocalRecordStore {
       },
     });
     return code;
-  });
+  }
 
   List<Map<String, dynamic>> listCollectorAccounts() =>
       (_collectorAccounts.values.map(_safeCollector).toList()
